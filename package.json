@@ -1,0 +1,11 @@
+{
+  "name": "gamecore",
+  "version": "1.0.0",
+  "description": "> 게임 state & model 시스템.   > 특정 환경에 따라 인터페이스나 API 관련 로직은 달라질 수 있어도 데이터에 관한 로직들은   > 달라지지 않는다는 점에 착안한 프로젝트 개인용 인디게임 시스템을 만들고 그걸 다양한 인터페이스와 플랫폼에 이식해보는게 목표.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "ISA",
+  "license": "ISC"
+}
