@@ -59,9 +59,9 @@
 
 ### 1. 패키지 설치
 ```bash
-npm install @ryuis/gamecore
+npm install ryuis-gamecore
 # 또는
-pnpm add @ryuis/gamecore
+pnpm add ryuis-gamecore
 ```
 
 ### 2. 마스터 데이터 등록 및 팩토리 스폰
@@ -77,7 +77,7 @@ import {
   ProgressionSystem,
   LootSystem,
   TurnSystem
-} from '@ryuis/gamecore';
+} from 'ryuis-gamecore';
 
 // 1. 데이터 매니저에 게임 기획 데이터(JSON) 주입
 const data = new DataManager();

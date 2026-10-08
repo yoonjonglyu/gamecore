@@ -29,7 +29,7 @@ This skill provides step-by-step guidance, rules, and best practices for develop
 
 ### Step 1: Initialize Master Data (`DataManager`)
 ```ts
-import { DataManager, World, EntityFactory } from '@ryuis/gamecore';
+import { DataManager, World, EntityFactory } from 'ryuis-gamecore';
 
 const data = new DataManager();
 
