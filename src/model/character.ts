@@ -6,11 +6,11 @@ export interface CharacterProps {
 }
 
 class Character implements CharacterProps {
+  idx: number = 0;
+  name: string = '';
+  status: Object = {};
+  skills: Object = {};
   constructor() {}
-  idx: number;
-  name: string;
-  status: Object;
-  skills: Object;
 }
 
 export default Character;

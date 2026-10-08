@@ -16,12 +16,12 @@ class Item implements ItemProps {
   constructor(render: Function) {
     this._renderCb = render;
   }
-  idx: number;
-  name: string;
-  spec: Object;
-  limit: number;
-  category: string;
-  value: number;
+  idx: number = 0;
+  name: string = '';
+  spec: Object = {};
+  limit: number = 0;
+  category: string = '';
+  value: number = 0;
 
   render() {
     this._renderCb();

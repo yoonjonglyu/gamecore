@@ -16,6 +16,7 @@ export interface ItemSpec {
 }
 
 export class ItemDefComponent extends Component {
+  id: string | number;
   idx: number;
   name: string;
   category: ItemCategory;
@@ -29,7 +30,8 @@ export class ItemDefComponent extends Component {
   constraints?: Constraint[];
 
   constructor(props: {
-    idx: number;
+    id?: string | number;
+    idx?: number;
     name: string;
     category: ItemCategory;
     stackLimit?: number;
@@ -39,7 +41,8 @@ export class ItemDefComponent extends Component {
     constraints?: Constraint[];
   }) {
     super();
-    this.idx = props.idx;
+    this.id = props.id ?? props.idx ?? 0;
+    this.idx = typeof props.idx === 'number' ? props.idx : (typeof props.id === 'number' ? props.id : 0);
     this.name = props.name;
     this.category = props.category;
     this.stackLimit = props.stackLimit ?? 99;

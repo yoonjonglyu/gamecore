@@ -1,6 +1,9 @@
 {
-  "name": "gamecore",
+  "name": "@ryuis/gamecore",
   "version": "0.1.0",
+  "publishConfig": {
+    "access": "public"
+  },
   "description": "게임 state & model 시스템. ECS(Entity-Component-System) + EventBus 기반 범용 게임 코어. 특정 환경에 따라 인터페이스나 API 관련 로직은 달라질 수 있어도 데이터에 관한 로직들은 달라지지 않는다.",
   "type": "module",
   "main": "./dist/index.js",
@@ -11,6 +14,13 @@
       "types": "./dist/index.d.ts"
     }
   },
+  "files": [
+    "dist",
+    "skills",
+    "docs",
+    "plugin.json",
+    "README.md"
+  ],
   "scripts": {
     "build": "tsc",
     "test": "vitest run",

@@ -13,6 +13,7 @@
 export interface CoreEvents {
   // ─── Entity 생명주기 ───────────────────────────
   'entity:created': { entityId: number; tags: string[] };
+  'entity:spawned': { entityId: number; blueprintId: string; tags: string[] };
   'entity:removed': { entityId: number };
 
   // ─── 스탯 변화 ────────────────────────────────
@@ -21,9 +22,20 @@ export interface CoreEvents {
   'stats:revived': { entityId: number };
 
   // ─── 인벤토리 ─────────────────────────────────
-  'inventory:item:added': { entityId: number; defId: number; quantity: number };
-  'inventory:item:removed': { entityId: number; defId: number; quantity: number };
+  'inventory:item:added': { entityId: number; defId: string | number; quantity: number };
+  'inventory:item:removed': { entityId: number; defId: string | number; quantity: number };
   'inventory:full': { entityId: number };
+
+  // ─── 장비 ─────────────────────────────────────
+  'equipment:equipped': { entityId: number; slot: string; itemId: string | number };
+  'equipment:unequipped': { entityId: number; slot: string; itemId: string | number };
+  'equipment:failed': {
+    entityId: number;
+    slot: string;
+    itemId: string | number;
+    reason: 'not_in_inventory' | 'invalid_item' | 'constraint_failed' | 'inventory_full' | string;
+    details?: string;
+  };
 
   // ─── 전투 ─────────────────────────────────────
   'combat:damage': {
@@ -68,4 +80,45 @@ export interface CoreEvents {
   };
   'status:removed': { entityId: number; statusId: string };
   'status:expired': { entityId: number; statusId: string };
+
+  // ─── 성장 및 경험치 ─────────────────────────
+  'progression:exp_gained': {
+    entityId: number;
+    amount: number;
+    currentExp: number;
+    requiredExp: number;
+    level: number;
+  };
+  'progression:levelup': {
+    entityId: number;
+    oldLevel: number;
+    newLevel: number;
+    levelsGained: number;
+    statsGained: Record<string, number>;
+  };
+
+  // ─── 전리품 및 드랍 ───────────────────────────
+  'loot:dropped': {
+    deadEntityId: number;
+    receiverId?: number;
+    items: Array<{ itemId: string | number; quantity: number }>;
+    exp: number;
+  };
+
+  // ─── 턴 및 라운드 ─────────────────────────────
+  'turn:round:started': { round: number; turnOrder: number[] };
+  'turn:started': { round: number; entityId: number; turnIndex: number };
+  'turn:ended': { round: number; entityId: number };
+  'turn:round:ended': { round: number };
+
+  // ─── 공간 및 이동 ─────────────────────────────
+  'movement:moved': { entityId: number; fromX: number; fromY: number; toX: number; toY: number };
+  'movement:blocked': {
+    entityId: number;
+    fromX: number;
+    fromY: number;
+    targetX: number;
+    targetY: number;
+    reason: 'out_of_bounds' | 'tile_blocked' | 'entity_blocked' | string;
+  };
 }

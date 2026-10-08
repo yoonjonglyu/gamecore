@@ -14,7 +14,7 @@
  * bus.emit('player:damaged', { entityId: 1, amount: 10 });
  */
 
-export type EventMap = Record<string, unknown>;
+export type EventMap = object;
 
 type Listener<T> = (payload: T) => void;
 

@@ -20,6 +20,23 @@ export class Entity {
   }
 
   // ──────────────────────────────────────────────
+  // Tag CRUD
+  // ──────────────────────────────────────────────
+
+  hasTag(tag: string): boolean {
+    return this.tags.has(tag);
+  }
+
+  addTag(tag: string): this {
+    this.tags.add(tag);
+    return this;
+  }
+
+  removeTag(tag: string): boolean {
+    return this.tags.delete(tag);
+  }
+
+  // ──────────────────────────────────────────────
   // Component CRUD
   // ──────────────────────────────────────────────
 
@@ -43,5 +60,9 @@ export class Entity {
 
   hasAll(types: ComponentType[]): boolean {
     return types.every((t) => this._components.has(t));
+  }
+
+  get allComponents(): Component[] {
+    return [...this._components.values()];
   }
 }

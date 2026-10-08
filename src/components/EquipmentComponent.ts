@@ -18,8 +18,8 @@ export type EquipSlot =
   | string; // 게임마다 슬롯 확장 가능
 
 export interface EquippedItem {
-  /** ItemDef의 idx */
-  defId: number;
+  /** ItemDef의 id / idx */
+  defId: string | number;
   /** 무기 타입 (예: 'sword', 'staff', 'bow') — ItemDefComponent.spec에서 유래 */
   weaponType?: string;
   /** 아이템에 부여된 속성 */

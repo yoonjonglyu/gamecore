@@ -42,6 +42,10 @@ export class World<Events extends EventMap = EventMap> {
     return this._entities.get(id);
   }
 
+  get entities(): Entity[] {
+    return [...this._entities.values()];
+  }
+
   queryEntities(types: ComponentType[]): Entity[] {
     return [...this._entities.values()].filter((e) => e.hasAll(types));
   }

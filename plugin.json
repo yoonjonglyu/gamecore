@@ -1,0 +1,5 @@
+{
+  "name": "gamecore",
+  "version": "0.1.0",
+  "description": "GameCore ECS & event-driven framework developer skill and rules"
+}

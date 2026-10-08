@@ -7,14 +7,14 @@
 import { Component } from '../core/Component';
 
 export interface ItemEntry {
-  /** 아이템 정의 ID (ItemDef의 idx) */
-  defId: number;
+  /** 아이템 정의 ID (ItemDef의 id/idx) */
+  defId: string | number;
   /** 소지 수량 */
   quantity: number;
 }
 
 export class InventoryComponent extends Component {
-  private _items: Map<number, ItemEntry> = new Map();
+  private _items: Map<string | number, ItemEntry> = new Map();
   readonly maxSlots: number;
 
   constructor(maxSlots = 30) {
@@ -34,7 +34,7 @@ export class InventoryComponent extends Component {
     return [...this._items.values()];
   }
 
-  add(defId: number, quantity = 1): boolean {
+  add(defId: string | number, quantity = 1): boolean {
     if (this._items.has(defId)) {
       this._items.get(defId)!.quantity += quantity;
       return true;
@@ -44,7 +44,7 @@ export class InventoryComponent extends Component {
     return true;
   }
 
-  remove(defId: number, quantity = 1): boolean {
+  remove(defId: string | number, quantity = 1): boolean {
     const entry = this._items.get(defId);
     if (!entry || entry.quantity < quantity) return false;
     entry.quantity -= quantity;
@@ -52,11 +52,11 @@ export class InventoryComponent extends Component {
     return true;
   }
 
-  has(defId: number, quantity = 1): boolean {
+  has(defId: string | number, quantity = 1): boolean {
     return (this._items.get(defId)?.quantity ?? 0) >= quantity;
   }
 
-  getQuantity(defId: number): number {
+  getQuantity(defId: string | number): number {
     return this._items.get(defId)?.quantity ?? 0;
   }
 }

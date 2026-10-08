@@ -12,7 +12,7 @@ import { CoreEvents } from '../events';
 export interface InventoryRequest {
   type: 'add' | 'remove';
   entityId: number;
-  defId: number;
+  defId: string | number;
   quantity: number;
 }
 
