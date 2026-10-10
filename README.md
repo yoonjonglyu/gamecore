@@ -44,14 +44,17 @@
 
 | 분류 | 주요 클래스 / 인터페이스 | 설명 |
 |------|------------------------|------|
-| **Core ECS** | `World`, `Entity`, `Component`, `System`, `EventBus` | 순수 데이터와 비즈니스 로직을 분리하는 초경량 ECS 엔진 |
+| **Core ECS & Observer** | `World`, `Entity`, `Component`, `System`, `EventBus` | 순수 데이터/로직 분리 초경량 ECS 및 Zero-dependency `subscribe()` Observer |
+| **스탯 파이프라인** | `StatPipeline`, `ExtendedStatsComponent` | 4단계 연산(Base->Flat->%->Amp), 수식 의존성(DAG), Dirty Flag 캐싱 |
+| **전략형 전투** | `CombatSystem`, `DamageCalculator`, `CombatMiddleware`, `BarrierComponent` | 수식 전략 패턴, 4단계 라이프사이클 훅(PreHit, Calc, Barrier, PostHit) |
+| **시간 추상화 & 스킬** | `SkillSystem`, `SkillEffectExecutor`, `StatusEffectSystem` | 턴제/실시간 추상화, 선언적 스킬 이펙트 디스패처, DoT 및 버프 만료 롤백 |
 | **Data & Prefabs** | `DataManager`, `Registry<T>`, `EntityBlueprint`, `EntityFactory` | 외부 데이터(JSON) 주입 및 선언적 오브젝트 스폰 공장 |
-| **전투 & 스킬** | `CombatSystem`, `SkillSystem`, `StatModSystem`, `ConstraintChecker` | 데미지 계산, 버프/디버프, 쿨다운, MP 코스트, 스킬 제약 검증 |
 | **인벤토리 & 장비** | `InventorySystem`, `EquipmentSystem` | 아이템 보관/수량 스택, 장비 착용 및 스탯 모디파이어 자동 연동 |
 | **성장 & 전리품** | `ProgressionSystem`, `LootSystem` | 경험치(EXP) 획득, 레벨업, 스탯 성장 곡선, 확률 기반 드랍 테이블 |
 | **턴 & 라운드** | `TurnSystem`, `TurnComponent` | 속도/이니셔티브 기반 턴 큐 자동 정렬, AP 관리, 라운드 제어 |
 | **공간 & 그리드** | `GridMap`, `PositionComponent`, `MovementSystem` | 2D 타일맵 통행 판정, 좌표 이동 및 지형/유닛 충돌 검사 |
 | **세이브 & 로드** | `WorldSerializer`, `ComponentRegistry` | 게임 월드와 엔티티 상태의 JSON 직렬화 및 완전한 복원 |
+| **React 바인딩** | `ryuis-gamecore/react` (`useEntity`, `useComponent`, `useWorldEntities`) | React 19 `useSyncExternalStore` 기반 무지연/무티어링 반응형 훅 |
 
 ---
 

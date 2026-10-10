@@ -2,26 +2,31 @@
 name: gamecore-developer
 description: >-
   Architects, develops, and extends games and game systems using the GameCore ECS framework.
-  Activate when designing games, building RPG/strategy/roguelike mechanics (combat, skills,
-  inventory, equipment, progression, loot tables, turn queues, grid movement), or extending
-  GameCore with custom meta systems (e.g. runes, pets, blessings, world tree, mastery).
+  Activate when designing games, building RPG/strategy/action/idle/roguelike mechanics
+  (stat pipelines, pluggable combat, skills, inventory, equipment, progression, loot,
+  status effects, turn queues, grid movement), or integrating with React/Canvas/Node.js.
 ---
 
 # GameCore Developer Skill
 
-This skill guides the design, implementation, and extension of games built on the **GameCore** framework (`gamecore` package).
+This skill guides the design, implementation, and extension of games built on the **GameCore** framework (`ryuis-gamecore` package).
 
-GameCore is a platform-agnostic, data-driven, ECS (Entity-Component-System) engine designed so that **data and rules remain invariant** regardless of the frontend interface (Web Canvas, Terminal CLI, React, Mobile).
+GameCore is a platform-agnostic, data-driven, ECS (Entity-Component-System) engine designed so that **data and rules remain invariant** regardless of the frontend interface (Web Canvas, PixiJS, Terminal CLI, React, Node.js).
 
 ---
 
 ## 1. Core Principles
 
 1. **Components are Pure Data**: Never put business logic, calculations, or methods that alter other entities inside components.
-2. **Systems are Pure Logic**: Systems operate on entities queried by component types (`query: ComponentType[]`). Systems should not hold game-state; state belongs in components.
-3. **Event-Driven Communication**: Decouple systems using `world.bus.emit()` and `world.bus.on()`.
+2. **Systems are Pure Logic**: Systems operate on entities queried by component types (`query: ComponentType[]`). Systems should not hold game-state; state belongs in components. Use `system.enabled` to pause/resume and `system.priority` to control execution order.
+3. **Event-Driven Communication**: Decouple systems using `world.bus.emit()`, `world.bus.on()`, and `world.bus.once()`.
 4. **Data-Driven Prefabs**: Do not hardcode entity construction (`new StatsComponent()`) across your game code. Use `EntityBlueprint` and `EntityFactory.spawn()`.
-5. **Unified Stat Modification**: Any buff, debuff, rune, equipment bonus, or talent should use `StatModsComponent` via flat/percent modifiers rather than directly overwriting base stats.
+5. **Declarative Stat Pipeline**: Use `StatPipeline` and `ExtendedStatsComponent` for arbitrary RPG attributes (STR, INT, CritRate, FireDamage, etc.) with 4-stage calculation order:
+   $$\text{Final} = (\text{Base} + \sum \text{Flat}) \times (1 + \sum \text{Percent}) \times (1 + \sum \text{Amplification})$$
+   and DAG-based formula dependencies with dirty flag caching.
+6. **Pluggable Combat Pipeline**: Decouple damage formulas via `DamageCalculator` strategy pattern and 4-stage lifecycle middlewares (`onPreHit`, `onDamageCalculate`, `onShieldAbsorb`, `onPostHit`). Shield damage is absorbed by `BarrierComponent` before deducting HP.
+7. **Time Abstraction**: Systems support `update(entities, delta, mode?: 'turn' | 'realtime')`. Drive execution flexibly for turn-based or real-time loop.
+8. **UI-Agnostic Observer & React 19 Bindings**: Subscribe directly to entity or world changes via zero-dependency `entity.subscribe()` / `world.subscribe()`, or use `@ryuis-gamecore/react` hooks (`useEntity`, `useComponent`, `useWorldEntities`).
 
 ---
 
@@ -31,36 +36,50 @@ GameCore is a platform-agnostic, data-driven, ECS (Entity-Component-System) engi
 Register static game catalogs (items, skills, blueprints) before starting the world.
 
 ```ts
-import { DataManager, World, EntityFactory } from 'gamecore';
+import { DataManager, World, EntityFactory } from 'ryuis-gamecore';
 
 const data = new DataManager();
 
-// Register items
+// 1. Items
 data.items.register({
   id: 'sword_iron',
   name: 'Iron Sword',
   category: 'weapon',
-  spec: { weaponType: 'sword', attack: 15 },
+  spec: { weaponType: 'sword', attack: 15, critRate: 0.05 },
 });
 
-// Register skills
+// 2. Skills
 data.skills.register({
   id: 'fireball',
   name: 'Fireball',
   mpCost: 15,
   cooldown: 2000,
   targetType: 'single_enemy',
-  effects: [{ type: 'damage', basePower: 30, scaling: { attack: 1.2 } }],
+  effects: [
+    { type: 'damage', basePower: 30, scaling: { attack: 1.2 } },
+    { type: 'status', statusId: 'burn', chance: 0.5, duration: 3000 },
+  ],
 });
 
-// Register blueprints
+// 3. Blueprints (Prefabs)
 data.blueprints.register({
   id: 'goblin',
   tags: ['enemy'],
   identity: { name: 'Goblin' },
   stats: { maxHp: 50, attack: 10, defense: 3, speed: 6 },
+  extendedStats: {
+    baseStats: { str: 10, dex: 12, fireResist: 0.1 },
+    definitions: [
+      {
+        name: 'critRate',
+        dependencies: ['dex'],
+        formula: (r) => r.get('dex') * 0.01,
+      },
+    ],
+  },
   skills: ['fireball'],
   inventory: [{ itemId: 'sword_iron', count: 1 }],
+  equipment: { weapon: 'sword_iron' },
 });
 ```
 
@@ -72,6 +91,7 @@ import {
   World,
   CombatSystem,
   SkillSystem,
+  StatusEffectSystem,
   InventorySystem,
   EquipmentSystem,
   StatModSystem,
@@ -79,13 +99,15 @@ import {
   LootSystem,
   TurnSystem,
   MovementSystem,
-} from 'gamecore';
+} from 'ryuis-gamecore';
 
 const world = new World();
 const statMods = new StatModSystem();
+const statusSystem = new StatusEffectSystem();
 
 world.addSystem(new CombatSystem());
 world.addSystem(statMods);
+world.addSystem(statusSystem);
 world.addSystem(new SkillSystem(undefined, statMods));
 world.addSystem(new InventorySystem());
 world.addSystem(new EquipmentSystem(data, undefined, statMods));
@@ -110,73 +132,126 @@ const boss = factory.spawn('goblin', {
 
 ---
 
-## 3. Extending GameCore with Custom Systems (Runes, Pets, World Tree)
+## 3. Core Architecture Patterns
 
-When a game introduces mechanics not built into core, follow the **5-Step Extension Pattern**:
-
-### Pattern:
-1. **Catalog (Optional)**: `data.getOrCreateRegistry('runes').register(...)`
-2. **Component**: Create a class extending `Component`
-3. **Factory Handler**: Bind it to blueprints:
-   ```ts
-   factory.registerComponentHandler('runes', (entity, runeIds) => {
-     entity.add(new RuneComponent(runeIds as string[]));
-   });
-   ```
-4. **System**: Create a class extending `System`:
-   * To affect stats, inject modifiers into `StatModsComponent` (`sourceId: 'rune:fire'`)
-   * To listen to events, subscribe via `this.bus.on('combat:damage', ...)`
-   * Add to world: `world.addSystem(new RuneSystem())`
-5. **Persistence**: Register for JSON save/load:
-   ```ts
-   defaultComponentRegistry.register('RuneComponent', RuneComponent);
-   ```
-
-### Pets & Companions:
-* Pets are standard `Entity` instances (`tags: ['pet', 'ally']`).
-* Connect with an `OwnerComponent({ ownerId: hero.id })`.
-* Systems listen to combat events to coordinate follow-up actions.
-
----
-
-## 4. Turn-Based vs Real-Time Control
-
-### Turn-Based Mode:
-Use `TurnSystem` + `TurnComponent`:
-```ts
-const turn = new TurnSystem();
-world.addSystem(turn);
-
-turn.startRound(); // Sorts living entities by speed descending
-const actorId = turn.currentEntityId;
-// Player/AI executes action...
-turn.nextTurn(); // Advances to next living actor
-```
-
-### Real-Time / Tick Mode:
-Drive execution with `world.update(deltaMs)`. All cooldowns, buff durations, and status effects automatically progress based on `deltaMs`.
-
----
-
-## 5. Persistence (Save & Load)
+### Pattern A: Custom Stat Pipeline & Dynamic Resources
+Use `ExtendedStatsComponent` when games have diverse attributes (STR, INT, CritRate, Elemental Resists, Stamina, Sanity):
 
 ```ts
-import { WorldSerializer } from 'gamecore';
+import { ExtendedStatsComponent } from 'ryuis-gamecore';
 
-const serializer = new WorldSerializer();
+const stats = new ExtendedStatsComponent({
+  baseStats: { str: 20, dex: 15, int: 10 },
+  currentResources: { hp: 100, stamina: 100 },
+});
 
-// Save
-const json = serializer.toJSON(world);
+// 1. Define derived stat formula (DAG dependency)
+stats.defineStat({
+  name: 'patk',
+  dependencies: ['str', 'dex'],
+  formula: (r) => r.get('str') * 2.0 + r.get('dex') * 0.8,
+});
 
-// Load
-const restoredWorld = new World();
-serializer.deserialize(json, restoredWorld);
+// 2. Add 4-stage modifiers (Flat, Percent, Amplification)
+stats.addModifier({ sourceId: 'buff:rage', stat: 'patk', flat: 10, percent: 0.2, amplification: 0.1 });
+
+// 3. Fast O(1) query with dirty flag caching
+const finalAtk = stats.get('patk');
+const allStats = stats.toRecord(); // { str: 20, dex: 15, patk: 68.2, ... }
+```
+
+### Pattern B: Pluggable Combat Pipeline & Barriers
+Inject custom damage formulas via `DamageCalculator` and lifecycle middlewares:
+
+```ts
+import { CombatSystem, BarrierComponent, DamageCalculator } from 'ryuis-gamecore';
+
+// Custom formula (e.g. Armor reduction curve)
+class LoLDamageCalculator implements DamageCalculator {
+  calculate(ctx) {
+    const reduction = 100 / (100 + ctx.targetDefense);
+    return Math.round(ctx.rawDamage * reduction);
+  }
+}
+
+const combat = new CombatSystem({ calculator: new LoLDamageCalculator() });
+
+// Add Barrier (absorbs damage before HP is deducted)
+target.add(new BarrierComponent({ current: 50, max: 50 }));
+
+// Attack request with pure parameters
+combat.requestAttack({
+  attackerId: hero.id,
+  targetId: boss.id,
+  damageType: 'physical',
+  armorPen: 0.3,  // 30% armor penetration
+  lifesteal: 0.2, // 20% lifesteal
+});
+```
+
+### Pattern C: StatusEffectSystem & DoT Lifecycle
+Manage buffs, debuffs, and DoT ticks with automatic stat rollback on expiration:
+
+```ts
+import { StatusEffectSystem } from 'ryuis-gamecore';
+
+const statusSystem = new StatusEffectSystem();
+world.addSystem(statusSystem);
+
+// Apply burn (DoT) and link a temporary stat modifier
+statusSystem.applyStatus(enemy, 'burn', 3000, hero.id, 1, 1, {
+  tickInterval: 1000,
+  tickDamage: 15,
+  linkedModifiers: [{ sourceId: 'slow', stat: 'speed', flat: -3 }],
+});
+
+// Ticks deal damage every 1000ms.
+// When 'burn' expires after 3000ms, 'slow' modifier is automatically rolled back!
+```
+
+### Pattern D: Zero-Dependency Observer & React 19 Bindings
+Connect frontend interfaces without polling or tight coupling:
+
+```ts
+// 1. Zero-dependency Core Observer
+entity.subscribe((entity, change) => {
+  console.log(`Entity ${entity.id} updated: ${change.type}`);
+});
+
+world.subscribe((world, change) => {
+  console.log(`World change: ${change.type}`);
+});
+
+// 2. React 19 useSyncExternalStore Hooks
+import { useEntity, useComponent, useWorldEntities } from 'ryuis-gamecore/react';
+
+function HealthBar({ hero }: { hero: Entity }) {
+  useEntity(hero);
+  const stats = useComponent(hero, StatsComponent);
+  return <progress value={stats?.hp} max={stats?.maxHp} />;
+}
 ```
 
 ---
 
-## 6. Anti-Patterns to Avoid
+## 4. World Lifecycle & Cleanups
 
-- ❌ **Direct stat mutation for temporary buffs**: Do NOT do `stats.attack += 10`. Use `statMods.addMod({ entityId, mod: { stat: 'attack', flat: 10, duration: 5000 } })`.
-- ❌ **Hardcoded entity setup**: Avoid manual `new StatsComponent()`, `new InventoryComponent()` inside business code. Always create a Blueprint and use `EntityFactory`.
+* **Clear All Entities (Scene/Stage Reset)**:
+  `world.clearEntities()` clears all entities while retaining registered systems and EventBus listeners.
+* **Entity Pooling & Reset**:
+  `entity.clear()` resets all components and tags for reuse in object pools.
+* **Test Isolation**:
+  `Entity.resetIdCounter()` resets the global entity ID counter back to 0.
+* **System Pause/Resume**:
+  Set `system.enabled = false` to pause systems (e.g. during menus, dialogue, or cutscenes).
+* **System Execution Priority**:
+  Assign `system.priority` (higher numbers execute first) to control pipeline order.
+
+---
+
+## 5. Anti-Patterns to Avoid
+
+- ❌ **Direct stat mutation for temporary buffs**: Do NOT do `stats.attack += 10`. Use `StatModsComponent` or `ExtendedStatsComponent.addModifier()`.
+- ❌ **Hardcoded entity setup**: Avoid manual `new StatsComponent()` scattered inside scene scripts. Define blueprints in `DataManager` and call `factory.spawn()`.
 - ❌ **Direct inter-system coupling**: Do not import system instances into each other if an event can express the intent (`world.bus.emit('stats:died')`).
+- ❌ **Ignoring lifecycle cleanups**: Always use `statusSystem.applyStatus()` with `linkedModifiers` so modifiers are safely cleaned up when statuses expire.

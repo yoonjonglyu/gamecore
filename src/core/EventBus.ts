@@ -38,6 +38,22 @@ export class EventBus<Events extends EventMap = EventMap> {
     this._listeners.get(event)?.forEach((listener) => listener(payload));
   }
 
+  /**
+   * 1회만 실행되고 자동으로 구독 해제되는 리스너 등록
+   */
+  once<K extends keyof Events>(event: K, listener: Listener<Events[K]>): () => void {
+    const wrapper: Listener<Events[K]> = (payload) => {
+      this.off(event, wrapper);
+      listener(payload);
+    };
+    return this.on(event, wrapper);
+  }
+
+  /** 특정 이벤트에 등록된 리스너 개수 */
+  listenerCount<K extends keyof Events>(event: K): number {
+    return this._listeners.get(event)?.size ?? 0;
+  }
+
   /** 특정 이벤트의 모든 리스너 제거 */
   clear<K extends keyof Events>(event?: K): void {
     if (event) {
@@ -46,4 +62,5 @@ export class EventBus<Events extends EventMap = EventMap> {
       this._listeners.clear();
     }
   }
+
 }

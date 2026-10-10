@@ -12,14 +12,21 @@ export abstract class System<Events extends EventMap = EventMap> {
   /** 이 System이 필요로 하는 컴포넌트 타입들 (쿼리 필터) */
   abstract readonly query: ComponentType[];
 
+  /** 시스템 활성화/일시정지 여부 (false면 update 호출 스킵) */
+  enabled: boolean = true;
+
+  /** 시스템 실행 우선순위 (높은 숫자가 먼저 실행) */
+  priority: number = 0;
+
   /** World가 주입하는 이벤트 버스 */
   protected bus!: EventBus<Events>;
+
 
   /** World 초기화 시 호출 — 이벤트 구독 등 초기 작업 */
   onInit?(bus: EventBus<Events>): void;
 
-  /** 매 틱(update) 마다 호출 */
-  abstract update(entities: Entity[], delta: number): void;
+  /** 매 틱(update) 마다 호출. mode로 실시간(realtime)과 턴제(turn) 구분 가능 */
+  abstract update(entities: Entity[], delta: number, mode?: 'turn' | 'realtime'): void;
 
   /** World 해제 시 호출 */
   onDestroy?(): void;

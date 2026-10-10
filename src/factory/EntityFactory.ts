@@ -12,7 +12,9 @@ import { DataManager } from '../data/DataManager';
 import { EntityBlueprint, SpawnOptions } from './Blueprint';
 import { IdentityComponent } from '../components/IdentityComponent';
 import { StatsComponent, Stats } from '../components/StatsComponent';
+import { ExtendedStatsComponent } from '../components/ExtendedStatsComponent';
 import { SkillsComponent } from '../components/SkillsComponent';
+
 import { InventoryComponent } from '../components/InventoryComponent';
 import { EquipmentComponent, EquipSlot, EquippedItem } from '../components/EquipmentComponent';
 import { ItemDefComponent } from '../components/ItemDefComponent';
@@ -81,6 +83,26 @@ export class EntityFactory {
       };
       entity.add(new StatsComponent(mergedStats));
     }
+
+    // 4-1. ExtendedStatsComponent (커스텀 다원적 스탯 파이프라인)
+    if (bp.extendedStats || options?.overrideExtendedStats) {
+      const ext = new ExtendedStatsComponent({
+        baseStats: {
+          ...(bp.extendedStats?.baseStats ?? {}),
+          ...(options?.overrideExtendedStats?.baseStats ?? {}),
+        },
+        definitions: [
+          ...(bp.extendedStats?.definitions ?? []),
+          ...(options?.overrideExtendedStats?.definitions ?? []),
+        ],
+        currentResources: {
+          ...(bp.extendedStats?.currentResources ?? {}),
+          ...(options?.overrideExtendedStats?.currentResources ?? {}),
+        },
+      });
+      entity.add(ext);
+    }
+
 
     // 5. SkillsComponent
     const skillIdSet = new Set<string>([

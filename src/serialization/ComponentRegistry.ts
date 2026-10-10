@@ -14,6 +14,9 @@ import { ProgressionComponent } from '../components/ProgressionComponent';
 import { LootComponent } from '../components/LootComponent';
 import { TurnComponent } from '../components/TurnComponent';
 import { PositionComponent } from '../spatial/PositionComponent';
+import { BarrierComponent } from '../components/BarrierComponent';
+import { ExtendedStatsComponent } from '../components/ExtendedStatsComponent';
+
 
 export type ComponentSerializer<T extends Component = Component> = (component: T) => Record<string, unknown>;
 export type ComponentDeserializer<T extends Component = Component> = (data: Record<string, unknown>) => T;
@@ -188,7 +191,40 @@ export class ComponentRegistry {
     this.register('ClassComponent', ClassComponent);
     // LootComponent
     this.register('LootComponent', LootComponent);
+    // BarrierComponent
+    this.register(
+      'BarrierComponent',
+      BarrierComponent,
+      (c) => ({ current: c.current, max: c.max }),
+      (d) => new BarrierComponent({ current: d.current as number, max: d.max as number }),
+    );
+
+    // ExtendedStatsComponent
+    this.register(
+      'ExtendedStatsComponent',
+      ExtendedStatsComponent,
+      (c) => ({
+        baseStats: Object.fromEntries(
+          c.definedStatNames.map((name) => [name, c.getBase(name)]),
+        ),
+        currentResources: c.allResources,
+        modifiers: c.pipeline.getAllModifiers(),
+      }),
+      (d) => {
+        const ext = new ExtendedStatsComponent({
+          baseStats: (d.baseStats as Record<string, number>) ?? {},
+          currentResources: (d.currentResources as Record<string, number>) ?? {},
+        });
+        const mods = (d.modifiers as any[]) ?? [];
+        for (const mod of mods) {
+          ext.addModifier(mod);
+        }
+        return ext;
+      },
+    );
   }
 }
+
+
 
 export const defaultComponentRegistry = new ComponentRegistry();

@@ -44,8 +44,16 @@ export interface CoreEvents {
     raw: number;
     effective: number;
     isCritical: boolean;
+    damageType?: string;
+    shieldAbsorbed?: number;
   };
-  'combat:miss': { attackerId: number; targetId: number };
+  'combat:miss': { attackerId: number; targetId: number; reason?: 'evaded' | 'accuracy' | string };
+  'combat:lifesteal': { attackerId: number; targetId: number; amount: number };
+  'combat:reflected': { attackerId: number; targetId: number; amount: number };
+
+  // ─── 배리어 / 쉴드 ─────────────────────────────
+  'barrier:absorbed': { entityId: number; amount: number; remainingBarrier: number };
+  'barrier:broken': { entityId: number };
 
   // ─── 스탯 변화 (버프/디버프) ──────────────────
   'stat_mod:added': {
@@ -54,6 +62,7 @@ export interface CoreEvents {
     stat: string;
     flat?: number;
     percent?: number;
+    amplification?: number;
     remainingDuration?: number;
   };
   'stat_mod:expired': { entityId: number; sourceId: string; stat: string };
@@ -80,6 +89,12 @@ export interface CoreEvents {
   };
   'status:removed': { entityId: number; statusId: string };
   'status:expired': { entityId: number; statusId: string };
+  'status:tick:damage': {
+    entityId: number;
+    statusId: string;
+    damage: number;
+    sourceEntityId?: number;
+  };
 
   // ─── 성장 및 경험치 ─────────────────────────
   'progression:exp_gained': {

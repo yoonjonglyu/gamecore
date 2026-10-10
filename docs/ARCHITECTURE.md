@@ -62,5 +62,28 @@ GameCore는 **데이터 중심(Data-Driven)**이며 **플랫폼 독립적(Platfo
 * `update(entities, delta)`를 구현하며, `this.bus`를 통해 이벤트를 발행/수신합니다.
 
 ### `World`
-* 엔티티 생성/삭제 및 시스템 틱(`world.update(delta)`)을 조율하는 중심 오케스트레이터입니다.
+* 엔티티 생성/삭제 및 시스템 틱(`world.update(delta, mode)`)을 조율하는 중심 오케스트레이터입니다.
 * 내장 `EventBus`를 통해 시스템 간 이벤트 통신을 중재합니다.
+* `clearEntities()`를 통해 시스템과 이벤트 리스너를 보존한 채 엔티티 전체를 일괄 초기화할 수 있습니다.
+
+---
+
+## 4. 4대 핵심 코어 파이프라인
+
+1. **커스텀 스탯 파이프라인 (`StatPipeline` / `ExtendedStatsComponent`)**:
+   * 4단계 연산 순서 보장: Base Stat $\rightarrow$ Flat(+) $\rightarrow$ Percent(%) $\rightarrow$ Final Amplification(%)
+   * DAG(Directed Acyclic Graph) 기반 스탯 의존성 수식 정의 (`matk = int * 2 + wis * 0.8`) 및 순환 참조 감지
+   * Dirty Flag & Caching을 통한 초고속 $O(1)$ 연산 최적화
+2. **전략형 플러거블 전투 파이프라인 (`CombatSystem` / `CombatPipeline`)**:
+   * 전략 패턴 기반 `DamageCalculator` 인터페이스로 게임별 커스텀 데미지 수식 주입
+   * 4단계 라이프사이클 미들웨어 (`onPreHit`, `onDamageCalculate`, `onShieldAbsorb`, `onPostHit`)
+   * `BarrierComponent` 실드 흡수 및 파괴 라이프사이클 분리
+   * 역산 꼼수 없는 `CombatContext` 기반 순수 파라미터 전달 (흡혈, 반사, 무적 등)
+3. **시간 추상화 & 상태이상 파이프라인 (`SkillEffectExecutor` / `StatusEffectSystem`)**:
+   * 턴제(`mode: 'turn'`)와 실시간(`mode: 'realtime'`) 통합 지원
+   * `SkillEffectExecutor`를 통한 데미지/회복/상태이상/스탯버프 선언적 디스패치 및 커스텀 효과 확장
+   * `StatusEffectSystem`을 통한 도트 틱 주기 실행 및 버프 만료 시 연계 모디파이어 자동 롤백/클린업
+4. **UI 비종속 Observer / Subscription & React 19 바인딩**:
+   * 제로 의존성 `entity.subscribe(listener)` 및 `world.subscribe(listener)` 내장
+   * `@ryuis-gamecore/react` 서브패스를 통해 React 19 `useSyncExternalStore` 기반 바인딩 훅 제공 (`useEntity`, `useComponent`, `useWorldEntities`)
+

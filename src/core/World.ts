@@ -19,8 +19,35 @@ export class World<Events extends EventMap = EventMap> {
   /** 다음 틱에 삭제될 entity ID 목록 (지연 삭제) */
   private _pendingRemove: Set<number> = new Set();
 
+  /** 월드 상태 버전 카운터 (React 바인딩 등 스냅샷 비교용) */
+  version: number = 0;
+  private _listeners: Set<WorldListener> = new Set();
+
   constructor(bus?: EventBus<Events>) {
     this.bus = bus ?? new EventBus<Events>();
+  }
+
+  // ──────────────────────────────────────────────
+  // Observer / Subscription
+  // ──────────────────────────────────────────────
+
+  /**
+   * 월드의 엔티티 생성/삭제 이벤트를 구독한다.
+   * 외부 라이브러리(React 등)에 의존하지 않는 표준 옵저버 메서드.
+   * @returns 구독 해제 함수 (unsubscribe)
+   */
+  subscribe(listener: WorldListener): () => void {
+    this._listeners.add(listener);
+    return () => {
+      this._listeners.delete(listener);
+    };
+  }
+
+  notifyChange(event: WorldChangeEvent): void {
+    this.version++;
+    for (const listener of this._listeners) {
+      listener(this, event);
+    }
   }
 
   // ──────────────────────────────────────────────
@@ -31,27 +58,88 @@ export class World<Events extends EventMap = EventMap> {
     const entity = new Entity(tags);
     this._entities.set(entity.id, entity);
     this._invalidateCache();
+    this.notifyChange({ type: 'entity_created', entity });
     return entity;
   }
 
+
   removeEntity(id: number): void {
     this._pendingRemove.add(id);
+  }
+
+  /**
+   * 월드의 모든 엔티티를 일괄 삭제한다. (스테이지 전환, 새 게임 등)
+   * 시스템과 EventBus는 유지된다.
+   */
+  clearEntities(): void {
+    for (const entity of this._entities.values()) {
+      entity.clear();
+    }
+    this._entities.clear();
+    this._pendingRemove.clear();
+    this._invalidateCache();
+    this.notifyChange({ type: 'entities_cleared' });
   }
 
   getEntity(id: number): Entity | undefined {
     return this._entities.get(id);
   }
 
+  hasEntity(id: number): boolean {
+    return this._entities.has(id);
+  }
+
   get entities(): Entity[] {
     return [...this._entities.values()];
+  }
+
+  /** 현재 월드 내 활성 엔티티 총 개수 (O(1)) */
+  get entityCount(): number {
+    return this._entities.size;
   }
 
   queryEntities(types: ComponentType[]): Entity[] {
     return [...this._entities.values()].filter((e) => e.hasAll(types));
   }
 
+  /** 해당 컴포넌트들을 모두 가진 첫 번째 엔티티 (단일 플레이어/보스 조회용) */
+  queryFirst(types: ComponentType[]): Entity | undefined {
+    for (const entity of this._entities.values()) {
+      if (entity.hasAll(types)) return entity;
+    }
+    return undefined;
+  }
+
   queryByTag(tag: string): Entity[] {
     return [...this._entities.values()].filter((e) => e.tags.has(tag));
+  }
+
+  /** 특정 태그를 가진 첫 번째 엔티티 */
+  queryByTagFirst(tag: string): Entity | undefined {
+    for (const entity of this._entities.values()) {
+      if (entity.tags.has(tag)) return entity;
+    }
+    return undefined;
+  }
+
+  /** 임의 조건식을 만족하는 첫 번째 엔티티 탐색 */
+  findEntity(predicate: (e: Entity) => boolean): Entity | undefined {
+    for (const entity of this._entities.values()) {
+      if (predicate(entity)) return entity;
+    }
+    return undefined;
+  }
+
+  /** 특정 태그를 가진 모든 엔티티를 일괄 삭제 예약 */
+  removeEntitiesByTag(tag: string): number {
+    let count = 0;
+    for (const entity of this._entities.values()) {
+      if (entity.tags.has(tag)) {
+        this.removeEntity(entity.id);
+        count++;
+      }
+    }
+    return count;
   }
 
   // ──────────────────────────────────────────────
@@ -61,6 +149,8 @@ export class World<Events extends EventMap = EventMap> {
   addSystem(system: System<Events>): this {
     system._init(this.bus);
     this._systems.push(system);
+    // 우선순위(priority) 높은 순 정렬
+    this._systems.sort((a, b) => b.priority - a.priority);
     this._queryCache.set(system, this._buildQuery(system));
     return this;
   }
@@ -77,18 +167,19 @@ export class World<Events extends EventMap = EventMap> {
 
   /**
    * 한 틱을 실행한다.
-   * @param delta 마지막 틱 이후 경과 시간 (ms 또는 s, 게임에서 통일)
+   * @param delta 마지막 틱 이후 경과 시간 (ms 또는 s, 게임에서 통일. 턴제의 경우 턴 수)
+   * @param mode 실행 모드 ('realtime' | 'turn')
    */
-  update(delta: number): void {
+  update(delta: number, mode: 'turn' | 'realtime' = 'realtime'): void {
     // 지연 삭제 처리
     this._flushRemovals();
     // 컴포넌트 추가/제거 후 캐시가 stale해질 수 있으므로 매 틱 재빌드
-    // (최적화 필요 시 dirty 플래그 방식으로 교체 가능)
     this._invalidateCache();
 
     for (const system of this._systems) {
+      if (!system.enabled) continue; // 일시정지된 시스템 스킵
       const entities = this._queryCache.get(system) ?? [];
-      system.update(entities, delta);
+      system.update(entities, delta, mode);
     }
   }
 
@@ -97,6 +188,7 @@ export class World<Events extends EventMap = EventMap> {
     this._systems = [];
     this._entities.clear();
     this._queryCache.clear();
+    this._listeners.clear();
     this.bus.clear();
   }
 
@@ -118,8 +210,23 @@ export class World<Events extends EventMap = EventMap> {
 
   private _flushRemovals(): void {
     if (this._pendingRemove.size === 0) return;
-    this._pendingRemove.forEach((id) => this._entities.delete(id));
+    for (const id of this._pendingRemove) {
+      const entity = this._entities.get(id);
+      if (entity) {
+        this._entities.delete(id);
+        this.notifyChange({ type: 'entity_removed', entity });
+      }
+    }
     this._pendingRemove.clear();
     this._invalidateCache();
   }
 }
+
+export interface WorldChangeEvent {
+  type: 'entity_created' | 'entity_removed' | 'entities_cleared';
+  entity?: Entity;
+}
+
+export type WorldListener = (world: World<any>, event: WorldChangeEvent) => void;
+
+

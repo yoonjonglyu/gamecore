@@ -29,8 +29,10 @@ import { CoreEvents } from '../events';
 import { EquipmentComponent, EquipSlot } from '../components/EquipmentComponent';
 import { InventoryComponent } from '../components/InventoryComponent';
 import { StatModsComponent, ModifiableStat } from '../components/StatModsComponent';
+import { ExtendedStatsComponent } from '../components/ExtendedStatsComponent';
 import { DataManager } from '../data/DataManager';
 import { ConstraintChecker } from '../constraints/ConstraintChecker';
+
 import { StatModSystem } from './StatModSystem';
 
 export interface EquipRequest {
@@ -217,25 +219,39 @@ export class EquipmentSystem extends System<CoreEvents> {
   ): void {
     if (!spec) return;
     const modsComp = entity.get(StatModsComponent);
-    if (!modsComp) return;
+    const extStats = entity.get(ExtendedStatsComponent);
 
-    const modifiableStats: ModifiableStat[] = [
-      'maxHp',
-      'maxMp',
-      'attack',
-      'defense',
-      'speed',
-    ];
+    // 메타데이터 속성 제외하고 모든 숫자형 스탯을 동적으로 반영 (str, dex, matk, critRate 등 임의 스탯 지원)
+    const excludedKeys = new Set([
+      'weaponType',
+      'armorType',
+      'slot',
+      'category',
+      'itemLevel',
+      'price',
+      'rarity',
+      'icon',
+      'reqLevel',
+    ]);
 
-    for (const stat of modifiableStats) {
-      const val = spec[stat];
+    for (const [stat, val] of Object.entries(spec)) {
+      if (excludedKeys.has(stat)) continue;
       if (typeof val === 'number' && val !== 0) {
         const sourceId = `equip:${slot}:${stat}`;
-        modsComp.add({
-          sourceId,
-          stat,
-          flat: val,
-        });
+        if (modsComp) {
+          modsComp.add({
+            sourceId,
+            stat,
+            flat: val,
+          });
+        }
+        if (extStats) {
+          extStats.addModifier({
+            sourceId,
+            stat,
+            flat: val,
+          });
+        }
 
         this.bus.emit('stat_mod:added', {
           entityId: entity.id,
@@ -249,18 +265,24 @@ export class EquipmentSystem extends System<CoreEvents> {
 
   private _removeEquipMods(entity: Entity, slot: EquipSlot): void {
     const modsComp = entity.get(StatModsComponent);
-    if (!modsComp) return;
+    const extStats = entity.get(ExtendedStatsComponent);
 
     const prefix = `equip:${slot}:`;
-    const toRemove = modsComp.all.filter((m) => m.sourceId.startsWith(prefix));
+    if (modsComp) {
+      const toRemove = modsComp.all.filter((m) => m.sourceId.startsWith(prefix));
+      for (const mod of toRemove) {
+        modsComp.remove(mod.sourceId);
+        this.bus.emit('stat_mod:removed', {
+          entityId: entity.id,
+          sourceId: mod.sourceId,
+          stat: mod.stat,
+        });
+      }
+    }
 
-    for (const mod of toRemove) {
-      modsComp.remove(mod.sourceId);
-      this.bus.emit('stat_mod:removed', {
-        entityId: entity.id,
-        sourceId: mod.sourceId,
-        stat: mod.stat,
-      });
+    if (extStats) {
+      extStats.removeModifiersBySource(prefix);
     }
   }
 }
+

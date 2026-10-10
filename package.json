@@ -1,6 +1,7 @@
 {
   "name": "ryuis-gamecore",
-  "version": "0.1.0",
+  "version": "0.2.0",
+
   "description": "게임 state & model 시스템. ECS(Entity-Component-System) + EventBus 기반 범용 게임 코어. 특정 환경에 따라 인터페이스나 API 관련 로직은 달라질 수 있어도 데이터에 관한 로직들은 달라지지 않는다.",
   "type": "module",
   "main": "./dist/index.js",
@@ -9,8 +10,21 @@
     ".": {
       "import": "./dist/index.js",
       "types": "./dist/index.d.ts"
+    },
+    "./react": {
+      "import": "./dist/react/index.js",
+      "types": "./dist/react/index.d.ts"
     }
   },
+  "peerDependencies": {
+    "react": ">=18.0.0"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    }
+  },
+
   "files": [
     "dist",
     "skills",
@@ -22,10 +36,14 @@
     "build": "tsc",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "tsc --noEmit && vitest run && tsc"
   },
+
   "devDependencies": {
     "@types/node": "^26.6.3",
+    "@types/react": "^19.3.0",
+    "react": "^19.3.0",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2",
     "vitest": "^5.0.2"

@@ -4,28 +4,50 @@ GameCore가 기본 제공하는 표준 시스템들의 역할, 처리 프로세�
 
 ---
 
-## 1. CombatSystem (기본 전투)
-* **역할**: 일반 물리 공격 요청을 처리하고 데미지, 크리티컬, 방어력 감쇄, 사망 처리를 수행합니다.
-* **필요 컴포넌트**: `StatsComponent`
-* **요청 메서드**: `combat.requestAttack({ attackerId, targetId })`
+## 1. CombatSystem (전략형 플러거블 전투 파이프라인)
+* **역할**: 전략 패턴(`DamageCalculator`)과 4단계 라이프사이클 미들웨어(`onPreHit`, `onDamageCalculate`, `onShieldAbsorb`, `onPostHit`)를 통해 전투 판정을 유연하게 처리합니다.
+* **필요 컴포넌트**: `StatsComponent` 또는 `ExtendedStatsComponent` (선택적: `BarrierComponent`, `StatModsComponent`)
+* **핵심 API**:
+  * `combat.requestAttack({ attackerId, targetId, damageType?, armorPen?, lifesteal?, reflected?, critChance?, critMultiplier? })`
+  * `combat.setCalculator(calculator: DamageCalculator)`
+  * `combat.use(middleware: CombatMiddleware)`
 * **발행 이벤트**:
-  * `'combat:damage'`: `{ attackerId, targetId, raw, effective, isCritical }`
-  * `'combat:miss'`: `{ attackerId, targetId }`
+  * `'combat:damage'`: `{ attackerId, targetId, raw, effective, isCritical, damageType, shieldAbsorbed }`
+  * `'combat:miss'`: `{ attackerId, targetId, reason }`
+  * `'combat:lifesteal'`: `{ attackerId, targetId, amount }`
+  * `'combat:reflected'`: `{ attackerId, targetId, amount }`
+  * `'barrier:absorbed'`: `{ entityId, amount, remainingBarrier }`
+  * `'barrier:broken'`: `{ entityId }`
   * `'stats:hp:changed'`: `{ entityId, prev, next, delta }`
   * `'stats:died'`: `{ entityId }`
 
 ---
 
-## 2. SkillSystem (스킬 및 효과)
-* **역할**: 스킬 사용 요청 시 쿨다운, MP 코스트, 제약조건을 검증하고 Damage, Heal, Status, StatMod 효과를 적용합니다.
-* **필요 컴포넌트**: `SkillsComponent`, `StatsComponent`, `StatusEffectsComponent`
-* **요청 메서드**: `skills.useSkill({ casterId, skillId, targetIds })`
+## 2. SkillSystem (선언적 스킬 파이프라인)
+* **역할**: 스킬 사용 요청 시 쿨다운, MP 코스트, 제약조건(`ConstraintChecker`)을 검증하고, `SkillEffectExecutor`를 통해 Damage, Heal, Status, StatMod 및 커스텀 효과를 선언적으로 디스패치합니다.
+* **필요 컴포넌트**: `SkillsComponent`, `StatsComponent` 또는 `ExtendedStatsComponent`
+* **핵심 API**:
+  * `skills.useSkill({ casterId, skillId, targetIds })`
+  * `skills.registerEffect(type, handler)`: 프로젝트 고유 스킬 효과 등록
 * **발행 이벤트**:
   * `'skill:used'`: `{ casterId, skillId, targetIds }`
   * `'skill:failed'`: `{ casterId, skillId, reason, constraintReason }`
   * `'skill:cooldown:ready'`: `{ entityId, skillId }`
+
+---
+
+## 2-1. StatusEffectSystem (상태이상 & 도트 라이프사이클)
+* **역할**: 턴제(`mode: 'turn'`) 및 실시간(`mode: 'realtime'`) 지속시간 자동 차감, 도트 틱(화상/중독 등) 피해 주기적 적용, 상태이상 만료 시 `StatModsComponent`의 연계 버프 자동 롤백을 처리합니다.
+* **필요 컴포넌트**: `StatusEffectsComponent` (선택적: `StatModsComponent`, `StatsComponent`, `ExtendedStatsComponent`)
+* **핵심 API**:
+  * `statusSystem.applyStatus(entity, statusId, duration, sourceEntityId, stacks?, maxStacks?, options?)`
+  * `statusSystem.removeStatus(entity, statusId)`: 수동 해제 및 연동 스탯 버프 즉시 롤백
+* **발행 이벤트**:
   * `'status:applied'`: `{ entityId, statusId, duration, stacks, sourceEntityId }`
   * `'status:expired'`: `{ entityId, statusId }`
+  * `'status:removed'`: `{ entityId, statusId }`
+  * `'status:tick:damage'`: `{ entityId, statusId, damage, sourceEntityId }`
+
 
 ---
 
@@ -111,3 +133,15 @@ GameCore가 기본 제공하는 표준 시스템들의 역할, 처리 프로세�
 * **발행 이벤트**:
   * `'movement:moved'`: `{ entityId, fromX, fromY, toX, toY }`
   * `'movement:blocked'`: `{ entityId, fromX, fromY, targetX, targetY, reason }`
+
+---
+
+## 10. System 공통 제어 프로퍼티
+모든 System 인스턴스는 World 레벨에서 다음 프로퍼티를 통해 실행 순서 및 일시정지 제어가 가능합니다:
+* **`system.enabled: boolean`** (기본값: `true`):
+  * `false`로 설정 시 `world.update()` 루프에서 해당 시스템의 update 실행이 자동으로 스킵됩니다.
+  * 메뉴 화면, 인벤토리 오픈, 컷씬 중 전투나 이동 시스템 일시정지에 사용됩니다.
+* **`system.priority: number`** (기본값: `0`):
+  * `world.addSystem()` 등록 시 우선순위가 높은 시스템이 먼저 실행되도록 자동 내림차순 정렬됩니다.
+  * 예: 입력(100) -> 이동(50) -> 전투(30) -> 정리(0)
+

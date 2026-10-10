@@ -6,6 +6,7 @@
 
 import { Stats } from '../components/StatsComponent';
 import { EquipSlot } from '../components/EquipmentComponent';
+import { ExtendedStatsInit } from '../components/ExtendedStatsComponent';
 
 export interface BlueprintItemEntry {
   /** 등록된 아이템 ID */
@@ -25,8 +26,10 @@ export interface EntityBlueprint {
     name: string;
     description?: string;
   };
-  /** 초기 스탯 */
+  /** 초기 고정 기본 스탯 */
   stats?: Partial<Stats>;
+  /** 확장 커스텀 스탯 파이프라인 (str, dex, int, matk 등 다원적 스탯 및 수식) */
+  extendedStats?: ExtendedStatsInit;
   /** 기본 학습 스킬 ID 목록 */
   skills?: string[];
   /** 초기 인벤토리 소지 아이템 */
@@ -47,6 +50,8 @@ export interface SpawnOptions {
   tags?: string[];
   /** 스탯 오버라이드 (기본 스탯에 병합) */
   overrideStats?: Partial<Stats>;
+  /** 확장 스탯 오버라이드 */
+  overrideExtendedStats?: ExtendedStatsInit;
   /** 추가 스킬 ID */
   extraSkills?: string[];
   /** 추가 인벤토리 아이템 */
@@ -54,3 +59,4 @@ export interface SpawnOptions {
   /** 추가 커스텀 데이터 오버라이드 */
   custom?: Record<string, unknown>;
 }
+

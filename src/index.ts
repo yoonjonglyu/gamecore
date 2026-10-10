@@ -22,14 +22,20 @@
 export { Component } from './core/Component';
 export type { ComponentType } from './core/Component';
 export { Entity } from './core/Entity';
+export type { EntityChange, EntityChangeType, EntityListener } from './core/Entity';
 export { EventBus } from './core/EventBus';
 export type { EventMap } from './core/EventBus';
 export { System } from './core/System';
 export { World } from './core/World';
+export type { WorldChangeEvent, WorldListener } from './core/World';
 
 // ─── Components ──────────────────────────────────────────────────────────────
 export { StatsComponent } from './components/StatsComponent';
 export type { Stats } from './components/StatsComponent';
+export { ExtendedStatsComponent } from './components/ExtendedStatsComponent';
+export type { ExtendedStatsInit } from './components/ExtendedStatsComponent';
+export { BarrierComponent } from './components/BarrierComponent';
+export type { BarrierProps, BarrierAbsorbResult } from './components/BarrierComponent';
 export { IdentityComponent } from './components/IdentityComponent';
 export { InventoryComponent } from './components/InventoryComponent';
 export type { ItemEntry } from './components/InventoryComponent';
@@ -44,6 +50,30 @@ export { ProgressionComponent } from './components/ProgressionComponent';
 export type { StatGrowth, ExpFormula, ProgressionProps } from './components/ProgressionComponent';
 export { LootComponent } from './components/LootComponent';
 export type { LootItemEntry, LootProps } from './components/LootComponent';
+
+// ─── Stat Pipeline Engine ───────────────────────────────────────────────────
+export { StatPipeline } from './stats/StatPipeline';
+export type {
+  StatReader,
+  StatFormula,
+  StatDefinition,
+  PipelineStatModifier,
+  StatCalculationBreakdown,
+} from './stats/StatPipeline';
+
+// ─── Combat Pipeline ─────────────────────────────────────────────────────────
+export type {
+  DamageType,
+  CombatContext,
+  DamageCalculator,
+  CombatMiddleware,
+} from './combat/CombatPipeline';
+export {
+  DefaultDamageCalculator,
+  DefaultPreHitMiddleware,
+  DefaultShieldAbsorbMiddleware,
+  DefaultPostHitMiddleware,
+} from './combat/CombatPipeline';
 
 // ─── Constraints ─────────────────────────────────────────────────────────────
 export type {
@@ -63,11 +93,13 @@ export type { CustomHandler } from './constraints/ConstraintChecker';
 
 // ─── Systems ─────────────────────────────────────────────────────────────────
 export { CombatSystem } from './systems/CombatSystem';
-export type { AttackRequest } from './systems/CombatSystem';
+export type { AttackRequest, CombatSystemOptions } from './systems/CombatSystem';
 export { InventorySystem } from './systems/InventorySystem';
 export type { InventoryRequest } from './systems/InventorySystem';
 export { SkillSystem } from './systems/SkillSystem';
 export type { UseSkillRequest } from './systems/SkillSystem';
+export { StatusEffectSystem } from './systems/StatusEffectSystem';
+export type { ApplyStatusOptions } from './systems/StatusEffectSystem';
 export { StatModSystem } from './systems/StatModSystem';
 export type { AddModRequest, RemoveModRequest } from './systems/StatModSystem';
 export { EquipmentSystem } from './systems/EquipmentSystem';
@@ -98,6 +130,8 @@ export type {
   StatModEffect,
   TargetType,
 } from './skills/SkillDef';
+export { SkillEffectExecutor } from './skills/SkillEffectExecutor';
+export type { SkillEffectContext, SkillEffectHandler } from './skills/SkillEffectExecutor';
 export { SkillsComponent } from './components/SkillsComponent';
 export type { SkillSlot } from './components/SkillsComponent';
 export { StatusEffectsComponent } from './components/StatusEffectsComponent';
@@ -123,3 +157,4 @@ export type { SerializedWorld, SerializedEntity, SerializedComponent, SerializeO
 
 // ─── Events ──────────────────────────────────────────────────────────────────
 export type { CoreEvents } from './events';
+
