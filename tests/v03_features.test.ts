@@ -365,7 +365,7 @@ describe('5) 스킬 실행 파이프라인 고수준 통합 (SkillSystem canCast
       mpCost: 25,
       cooldown: 3000,
       targetType: 'single_enemy',
-      effects: [{ type: 'damage', baseDamage: 50, damageType: 'magical' }],
+      effects: [{ type: 'damage', basePower: 50, damageType: 'magical', critChance: 0 }],
     });
     caster.add(skills);
     caster.add(new StatsComponent({ hp: 100, mp: 50 }));
