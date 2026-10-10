@@ -95,8 +95,9 @@ export class StatModsComponent extends Component {
   /**
    * 기본값(base)에 이 스탯의 모든 활성 변화를 적용한 최종값을 반환한다.
    * 적용 순서: base → flat 합산 → percent 배율 적용
+   * @param options.round 반올림하여 정수값으로 반환할지 여부 (기본: true)
    */
-  compute(stat: ModifiableStat, base: number): number {
+  compute(stat: ModifiableStat, base: number, options?: { round?: boolean }): number {
     const mods = this.forStat(stat);
     if (mods.length === 0) return base;
 
@@ -109,7 +110,9 @@ export class StatModsComponent extends Component {
       percentSum += (mod.percent ?? 0) * stacks;
     }
 
-    return Math.round((base + flatSum) * (1 + percentSum));
+    const calculated = (base + flatSum) * (1 + percentSum);
+    const shouldRound = options?.round ?? true;
+    return shouldRound ? Math.round(calculated) : calculated;
   }
 
   // ──────────────────────────────────────────────
@@ -132,3 +135,7 @@ export class StatModsComponent extends Component {
     return expired;
   }
 }
+
+/** StatModsComponent의 짧은 별칭 (하위 호환 및 편의성 제공) */
+export { StatModsComponent as ModsComponent };
+

@@ -123,6 +123,10 @@ export class ExtendedStatsComponent extends Component {
   // ──────────────────────────────────────────────
 
 
+  hasResource(resource: string): boolean {
+    return this._resources.has(resource) || this.pipeline.hasStat(resource);
+  }
+
   getResource(resource: string, maxStatName?: string): number {
     if (!this._resources.has(resource)) {
       // 초기값이 없으면 해당 max 스탯값 또는 0

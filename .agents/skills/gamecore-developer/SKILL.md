@@ -3,255 +3,121 @@ name: gamecore-developer
 description: >-
   Architects, develops, and extends games and game systems using the GameCore ECS framework.
   Activate when designing games, building RPG/strategy/action/idle/roguelike mechanics
-  (stat pipelines, pluggable combat, skills, inventory, equipment, progression, loot,
-  status effects, turn queues, grid movement), or integrating with React/Canvas/Node.js.
+  (deterministic PRNG, precision rounding, stat pipelines, pluggable combat, skills, inventory,
+  equipment, progression, loot & affix tables, save integrity, status effects, turn queues, grid movement),
+  or integrating with React/Canvas/Node.js.
 ---
 
-# GameCore Developer Skill
+# GameCore Developer Skill (v0.3.0)
 
 This skill guides the design, implementation, and extension of games built on the **GameCore** framework (`ryuis-gamecore` package).
 
-GameCore is a platform-agnostic, data-driven, ECS (Entity-Component-System) engine designed so that **data and rules remain invariant** regardless of the frontend interface (Web Canvas, PixiJS, Terminal CLI, React, Node.js).
+GameCore is a platform-agnostic, deterministic, 0-dependency, ECS (Entity-Component-System) engine designed so that **data and rules remain invariant** regardless of the frontend interface (Web Canvas, PixiJS, Terminal CLI, React, Node.js).
 
 ---
 
 ## 1. Core Principles
 
-1. **Components are Pure Data**: Never put business logic, calculations, or methods that alter other entities inside components.
+1. **Components are Pure Data**: Never put business logic or methods that alter other entities inside components.
 2. **Systems are Pure Logic**: Systems operate on entities queried by component types (`query: ComponentType[]`). Systems should not hold game-state; state belongs in components. Use `system.enabled` to pause/resume and `system.priority` to control execution order.
-3. **Event-Driven Communication**: Decouple systems using `world.bus.emit()`, `world.bus.on()`, and `world.bus.once()`.
-4. **Data-Driven Prefabs**: Do not hardcode entity construction (`new StatsComponent()`) across your game code. Use `EntityBlueprint` and `EntityFactory.spawn()`.
-5. **Declarative Stat Pipeline**: Use `StatPipeline` and `ExtendedStatsComponent` for arbitrary RPG attributes (STR, INT, CritRate, FireDamage, etc.) with 4-stage calculation order:
+3. **Deterministic Verification (PRNG)**: Use `SeededRandom` (PCG32) for all chance/crit/evasion/loot rolls. Never use `Math.random()` in core simulation to ensure replayability and server-side anti-cheat verification.
+4. **Precision & Rounding Control**: Use `CombatRoundingConfig` and `applyRounding()` to eliminate floating-point precision anomalies (e.g. `14.799999999999999` -> `15`).
+5. **Save Integrity & Migrations**: Use `SaveManager` with HMAC-SHA256 checksum signatures and version migration chains to detect tampering and migrate save schemas safely.
+6. **Reactive ECS & Batching**: Observe component additions, mutations, and removals via `ecs:component:updated` and `ecs:component:removed`. Use `world.batchUpdates(fn)` to suppress repetitive updates during bulk calculations.
+7. **Declarative Stat Pipeline**: Use `StatPipeline` and `ExtendedStatsComponent` for arbitrary RPG attributes (STR, INT, CritRate, FireDamage, etc.) with 4-stage calculation order:
    $$\text{Final} = (\text{Base} + \sum \text{Flat}) \times (1 + \sum \text{Percent}) \times (1 + \sum \text{Amplification})$$
    and DAG-based formula dependencies with dirty flag caching.
-6. **Pluggable Combat Pipeline**: Decouple damage formulas via `DamageCalculator` strategy pattern and 4-stage lifecycle middlewares (`onPreHit`, `onDamageCalculate`, `onShieldAbsorb`, `onPostHit`). Shield damage is absorbed by `BarrierComponent` before deducting HP.
-7. **Time Abstraction**: Systems support `update(entities, delta, mode?: 'turn' | 'realtime')`. Drive execution flexibly for turn-based or real-time loop.
-8. **UI-Agnostic Observer & React 19 Bindings**: Subscribe directly to entity or world changes via zero-dependency `entity.subscribe()` / `world.subscribe()`, or use `@ryuis-gamecore/react` hooks (`useEntity`, `useComponent`, `useWorldEntities`).
+8. **Pluggable Combat Pipeline**: Decouple damage formulas via `DamageCalculator` strategy pattern and 4-stage lifecycle middlewares (`onPreHit`, `onDamageCalculate`, `onShieldAbsorb`, `onPostHit`). Shield damage is absorbed by `BarrierComponent` before deducting HP.
+9. **High-Level Skill Execution**: Use `skillSys.canCast()` to auto-validate MP/energy, cooldowns, constraints, and alive state; use `skillSys.castSkill()` for one-stop execution.
+10. **Procedural Loot & Affixes**: Use `DropTable` for independent and weighted rolls, and `AffixGenerator` to roll ARPG-style prefix/suffix pools with scaled stats.
+11. **UI-Agnostic Observer & React 19 Bindings**: Subscribe directly via zero-dependency `entity.subscribe()` / `world.subscribe()`, or use `@ryuis-gamecore/react` hooks (`useEntity`, `useComponent`, `useWorldEntities`).
 
 ---
 
-## 2. Standard Workflow for Creating a Game
+## 2. Standard Recipes & Code Examples
 
-### Step 1: Initialize DataManager & Master Data
-Register static game catalogs (items, skills, blueprints) before starting the world.
-
+### A. GameWorldManager (One-line Bootstrap with Seeded PRNG)
 ```ts
-import { DataManager, World, EntityFactory } from 'ryuis-gamecore';
+import { GameWorldManager, StatsComponent } from 'ryuis-gamecore';
 
-const data = new DataManager();
-
-// 1. Items
-data.items.register({
-  id: 'sword_iron',
-  name: 'Iron Sword',
-  category: 'weapon',
-  spec: { weaponType: 'sword', attack: 15, critRate: 0.05 },
+const manager = new GameWorldManager({
+  seed: 'dungeon-42',
+  rounding: { mode: 'round', decimals: 0 },
 });
 
-// 2. Skills
-data.skills.register({
+const hero = manager.world.createEntity('hero');
+hero.add(new StatsComponent({ hp: 100, maxHp: 100, attack: 25 }));
+```
+
+### B. High-Level Skill Pipeline
+```ts
+const skillDef = {
   id: 'fireball',
-  name: 'Fireball',
-  mpCost: 15,
-  cooldown: 2000,
+  name: '파이어볼',
+  mpCost: 30,
+  cooldown: 5000,
   targetType: 'single_enemy',
-  effects: [
-    { type: 'damage', basePower: 30, scaling: { attack: 1.2 } },
-    { type: 'status', statusId: 'burn', chance: 0.5, duration: 3000 },
-  ],
-});
+  effects: [{ type: 'damage', basePower: 45, damageType: 'magical' }],
+};
 
-// 3. Blueprints (Prefabs)
-data.blueprints.register({
-  id: 'goblin',
-  tags: ['enemy'],
-  identity: { name: 'Goblin' },
-  stats: { maxHp: 50, attack: 10, defense: 3, speed: 6 },
-  extendedStats: {
-    baseStats: { str: 10, dex: 12, fireResist: 0.1 },
-    definitions: [
-      {
-        name: 'critRate',
-        dependencies: ['dex'],
-        formula: (r) => r.get('dex') * 0.01,
-      },
-    ],
-  },
-  skills: ['fireball'],
-  inventory: [{ itemId: 'sword_iron', count: 1 }],
-  equipment: { weapon: 'sword_iron' },
-});
+// 1. Can Cast check
+const check = manager.skillSystem.canCast(caster, skillDef);
+if (check.ok) {
+  // 2. Immediate Cast (deducts MP, registers cooldown, applies effects, emits events)
+  const result = manager.skillSystem.castSkill(caster, [target], skillDef);
+}
 ```
 
-### Step 2: Assemble World & Required Systems
-Add only the systems your game genre needs.
-
+### C. SaveManager with HMAC-SHA256 & Migrations
 ```ts
-import {
-  World,
-  CombatSystem,
-  SkillSystem,
-  StatusEffectSystem,
-  InventorySystem,
-  EquipmentSystem,
-  StatModSystem,
-  ProgressionSystem,
-  LootSystem,
-  TurnSystem,
-  MovementSystem,
-} from 'ryuis-gamecore';
+import { SaveManager } from 'ryuis-gamecore';
 
-const world = new World();
-const statMods = new StatModSystem();
-const statusSystem = new StatusEffectSystem();
+// Save with tamper-evident HMAC signature
+const payload = SaveManager.serialize(world, 'secret-salt', 1);
 
-world.addSystem(new CombatSystem());
-world.addSystem(statMods);
-world.addSystem(statusSystem);
-world.addSystem(new SkillSystem(undefined, statMods));
-world.addSystem(new InventorySystem());
-world.addSystem(new EquipmentSystem(data, undefined, statMods));
-world.addSystem(new ProgressionSystem());
-world.addSystem(new LootSystem());
-```
-
-### Step 3: Spawn Entities with EntityFactory
-```ts
-const factory = new EntityFactory(world, data);
-
-// Standard spawn
-const player = factory.spawn('hero');
-
-// Override spawn (boss variant, elite mob)
-const boss = factory.spawn('goblin', {
-  name: 'Goblin Warlord',
-  tags: ['boss'],
-  overrideStats: { maxHp: 300, attack: 25 },
-});
-```
-
----
-
-## 3. Core Architecture Patterns
-
-### Pattern A: Custom Stat Pipeline & Dynamic Resources
-Use `ExtendedStatsComponent` when games have diverse attributes (STR, INT, CritRate, Elemental Resists, Stamina, Sanity):
-
-```ts
-import { ExtendedStatsComponent } from 'ryuis-gamecore';
-
-const stats = new ExtendedStatsComponent({
-  baseStats: { str: 20, dex: 15, int: 10 },
-  currentResources: { hp: 100, stamina: 100 },
+// Register schema migration v1 -> v2
+SaveManager.registerMigration(1, 2, (data) => {
+  // transform schema
+  return data;
 });
 
-// 1. Define derived stat formula (DAG dependency)
-stats.defineStat({
-  name: 'patk',
-  dependencies: ['str', 'dex'],
-  formula: (r) => r.get('str') * 2.0 + r.get('dex') * 0.8,
-});
-
-// 2. Add 4-stage modifiers (Flat, Percent, Amplification)
-stats.addModifier({ sourceId: 'buff:rage', stat: 'patk', flat: 10, percent: 0.2, amplification: 0.1 });
-
-// 3. Fast O(1) query with dirty flag caching
-const finalAtk = stats.get('patk');
-const allStats = stats.toRecord(); // { str: 20, dex: 15, patk: 68.2, ... }
+// Restore & verify
+const result = SaveManager.deserialize(payload, newWorld, 'secret-salt');
+if (!result.success && result.tampered) {
+  console.error('Tampered save data detected!');
+}
 ```
 
-### Pattern B: Pluggable Combat Pipeline & Barriers
-Inject custom damage formulas via `DamageCalculator` and lifecycle middlewares:
-
+### D. Procedural Loot & Affix Generation
 ```ts
-import { CombatSystem, BarrierComponent, DamageCalculator } from 'ryuis-gamecore';
+import { DropTable, AffixGenerator } from 'ryuis-gamecore';
 
-// Custom formula (e.g. Armor reduction curve)
-class LoLDamageCalculator implements DamageCalculator {
-  calculate(ctx) {
-    const reduction = 100 / (100 + ctx.targetDefense);
-    return Math.round(ctx.rawDamage * reduction);
+const table = new DropTable('mob_drop', [
+  { itemId: 'gold', chance: 1.0, min: 10, max: 20 },
+  { itemId: 'sword', weight: 10 },
+]);
+
+const dropped = table.rollIndependent(world.random);
+
+const affixGen = new AffixGenerator();
+affixGen.registerAffix('rare', {
+  id: 'flame',
+  name: '화염의',
+  type: 'prefix',
+  stat: 'attack',
+  minValue: 5,
+  maxValue: 10,
+});
+
+const rolledItem = affixGen.generate({ id: 'sword', name: '검', baseStats: { attack: 20 } }, 'rare', world.random);
+```
+
+### E. Batch Updates for High-Frequency Systems
+```ts
+world.batchUpdates(() => {
+  for (let i = 0; i < 1000; i++) {
+    stats.hp = i;
+    entity.notifyUpdated(StatsComponent);
   }
-}
-
-const combat = new CombatSystem({ calculator: new LoLDamageCalculator() });
-
-// Add Barrier (absorbs damage before HP is deducted)
-target.add(new BarrierComponent({ current: 50, max: 50 }));
-
-// Attack request with pure parameters
-combat.requestAttack({
-  attackerId: hero.id,
-  targetId: boss.id,
-  damageType: 'physical',
-  armorPen: 0.3,  // 30% armor penetration
-  lifesteal: 0.2, // 20% lifesteal
-});
+}); // Emits single deduplicated ecs:component:updated event
 ```
-
-### Pattern C: StatusEffectSystem & DoT Lifecycle
-Manage buffs, debuffs, and DoT ticks with automatic stat rollback on expiration:
-
-```ts
-import { StatusEffectSystem } from 'ryuis-gamecore';
-
-const statusSystem = new StatusEffectSystem();
-world.addSystem(statusSystem);
-
-// Apply burn (DoT) and link a temporary stat modifier
-statusSystem.applyStatus(enemy, 'burn', 3000, hero.id, 1, 1, {
-  tickInterval: 1000,
-  tickDamage: 15,
-  linkedModifiers: [{ sourceId: 'slow', stat: 'speed', flat: -3 }],
-});
-
-// Ticks deal damage every 1000ms.
-// When 'burn' expires after 3000ms, 'slow' modifier is automatically rolled back!
-```
-
-### Pattern D: Zero-Dependency Observer & React 19 Bindings
-Connect frontend interfaces without polling or tight coupling:
-
-```ts
-// 1. Zero-dependency Core Observer
-entity.subscribe((entity, change) => {
-  console.log(`Entity ${entity.id} updated: ${change.type}`);
-});
-
-world.subscribe((world, change) => {
-  console.log(`World change: ${change.type}`);
-});
-
-// 2. React 19 useSyncExternalStore Hooks
-import { useEntity, useComponent, useWorldEntities } from 'ryuis-gamecore/react';
-
-function HealthBar({ hero }: { hero: Entity }) {
-  useEntity(hero);
-  const stats = useComponent(hero, StatsComponent);
-  return <progress value={stats?.hp} max={stats?.maxHp} />;
-}
-```
-
----
-
-## 4. World Lifecycle & Cleanups
-
-* **Clear All Entities (Scene/Stage Reset)**:
-  `world.clearEntities()` clears all entities while retaining registered systems and EventBus listeners.
-* **Entity Pooling & Reset**:
-  `entity.clear()` resets all components and tags for reuse in object pools.
-* **Test Isolation**:
-  `Entity.resetIdCounter()` resets the global entity ID counter back to 0.
-* **System Pause/Resume**:
-  Set `system.enabled = false` to pause systems (e.g. during menus, dialogue, or cutscenes).
-* **System Execution Priority**:
-  Assign `system.priority` (higher numbers execute first) to control pipeline order.
-
----
-
-## 5. Anti-Patterns to Avoid
-
-- ❌ **Direct stat mutation for temporary buffs**: Do NOT do `stats.attack += 10`. Use `StatModsComponent` or `ExtendedStatsComponent.addModifier()`.
-- ❌ **Hardcoded entity setup**: Avoid manual `new StatsComponent()` scattered inside scene scripts. Define blueprints in `DataManager` and call `factory.spawn()`.
-- ❌ **Direct inter-system coupling**: Do not import system instances into each other if an event can express the intent (`world.bus.emit('stats:died')`).
-- ❌ **Ignoring lifecycle cleanups**: Always use `statusSystem.applyStatus()` with `linkedModifiers` so modifiers are safely cleaned up when statuses expire.

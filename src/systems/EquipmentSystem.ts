@@ -57,7 +57,7 @@ export class EquipmentSystem extends System<CoreEvents> {
   statModSystem?: StatModSystem;
 
   constructor(
-    data: DataManager,
+    data: DataManager = new DataManager(),
     constraintChecker?: ConstraintChecker,
     statModSystem?: StatModSystem,
   ) {

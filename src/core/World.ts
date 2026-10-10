@@ -4,13 +4,22 @@
  * EventBus를 내장하여 System 간 통신을 중재한다.
  */
 
-import { ComponentType } from './Component';
-import { Entity } from './Entity';
+import { Component, ComponentType } from './Component';
+import { Entity, EntityWorldEmitter } from './Entity';
 import { EventBus, EventMap } from './EventBus';
 import { System } from './System';
+import { SeededRandom } from '../math/SeededRandom';
 
-export class World<Events extends EventMap = EventMap> {
+export interface WorldOptions<Events extends EventMap = EventMap> {
+  bus?: EventBus<Events>;
+  seed?: number | string;
+  random?: SeededRandom;
+}
+
+export class World<Events extends EventMap = EventMap> implements EntityWorldEmitter {
   readonly bus: EventBus<Events>;
+  /** 결정론적 난수 생성기 (Seeded PRNG) */
+  readonly random: SeededRandom;
 
   private _entities: Map<number, Entity> = new Map();
   private _systems: System<Events>[] = [];
@@ -19,12 +28,27 @@ export class World<Events extends EventMap = EventMap> {
   /** 다음 틱에 삭제될 entity ID 목록 (지연 삭제) */
   private _pendingRemove: Set<number> = new Set();
 
+  /** 대량 업데이트 시 이벤트 배치 발행 플래그 */
+  private _isBatching = false;
+  private _batchedComponentUpdates: Map<string, { entityId: number; componentName: string; component: Component }> = new Map();
+  private _batchedComponentRemovals: Map<string, { entityId: number; componentName: string }> = new Map();
+
   /** 월드 상태 버전 카운터 (React 바인딩 등 스냅샷 비교용) */
   version: number = 0;
   private _listeners: Set<WorldListener> = new Set();
 
-  constructor(bus?: EventBus<Events>) {
-    this.bus = bus ?? new EventBus<Events>();
+  constructor(busOrOptions?: EventBus<Events> | WorldOptions<Events>, seed?: number | string) {
+    if (busOrOptions && 'emit' in busOrOptions && typeof (busOrOptions as any).emit === 'function') {
+      this.bus = busOrOptions as EventBus<Events>;
+      this.random = new SeededRandom(seed ?? Date.now());
+    } else if (busOrOptions && typeof busOrOptions === 'object') {
+      const opts = busOrOptions as WorldOptions<Events>;
+      this.bus = opts.bus ?? new EventBus<Events>();
+      this.random = opts.random ?? new SeededRandom(opts.seed ?? seed ?? Date.now());
+    } else {
+      this.bus = new EventBus<Events>();
+      this.random = new SeededRandom(seed ?? Date.now());
+    }
   }
 
   // ──────────────────────────────────────────────
@@ -51,11 +75,65 @@ export class World<Events extends EventMap = EventMap> {
   }
 
   // ──────────────────────────────────────────────
+  // Reactive Component Events & Batching
+  // ──────────────────────────────────────────────
+
+  /**
+   * 대량 연산 시 이벤트를 배치로 지연 발행하여 불필요한 반복 렌더링/리스너 호출을 방지한다.
+   * 배치 블록 종료 시 중복된 컴포넌트 변경은 마지막 1회로 통합(Deduplication)되어 일괄 발행된다.
+   */
+  batchUpdates(fn: () => void): void {
+    const wasBatching = this._isBatching;
+    this._isBatching = true;
+    try {
+      fn();
+    } finally {
+      this._isBatching = wasBatching;
+      if (!this._isBatching) {
+        this._flushBatchedEvents();
+      }
+    }
+  }
+
+  emitComponentUpdated(entityId: number, componentName: string, component: Component): void {
+    if (this._isBatching) {
+      const key = `${entityId}:${componentName}`;
+      this._batchedComponentRemovals.delete(key);
+      this._batchedComponentUpdates.set(key, { entityId, componentName, component });
+      return;
+    }
+    (this.bus as any).emit('ecs:component:updated', { entityId, componentName, component });
+  }
+
+  emitComponentRemoved(entityId: number, componentName: string): void {
+    if (this._isBatching) {
+      const key = `${entityId}:${componentName}`;
+      this._batchedComponentUpdates.delete(key);
+      this._batchedComponentRemovals.set(key, { entityId, componentName });
+      return;
+    }
+    (this.bus as any).emit('ecs:component:removed', { entityId, componentName });
+  }
+
+  private _flushBatchedEvents(): void {
+    for (const update of this._batchedComponentUpdates.values()) {
+      (this.bus as any).emit('ecs:component:updated', update);
+    }
+    this._batchedComponentUpdates.clear();
+
+    for (const removal of this._batchedComponentRemovals.values()) {
+      (this.bus as any).emit('ecs:component:removed', removal);
+    }
+    this._batchedComponentRemovals.clear();
+  }
+
+  // ──────────────────────────────────────────────
   // Entity 관리
   // ──────────────────────────────────────────────
 
   createEntity(...tags: string[]): Entity {
     const entity = new Entity(tags);
+    entity._bindWorld(this);
     this._entities.set(entity.id, entity);
     this._invalidateCache();
     this.notifyChange({ type: 'entity_created', entity });

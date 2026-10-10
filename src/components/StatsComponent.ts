@@ -1,14 +1,9 @@
 /**
  * @module components/StatsComponent
- * 캐릭터의 기본(베이스) 스탯을 담는 컴포넌트.
+ * 캐릭터의 기본(베이스) 스탯을 갖는 컴포넌트.
  *
  * 버프/디버프 적용 후 최종값은 `computed*` getter를 사용한다.
  * 전투 로직은 반드시 computed 값을 참조해야 한다.
- *
- * @example
- * const stats = entity.get(StatsComponent)!;
- * const mods  = entity.get(StatModsComponent);  // 없어도 OK
- * const atk   = stats.computedAttack(mods);     // 버프 반영된 공격력
  */
 
 import { Component } from '../core/Component';
@@ -24,8 +19,10 @@ export interface Stats {
   speed: number;
 }
 
+export type StatsProps = Partial<Stats>;
+
 export class StatsComponent extends Component {
-  /** 기본 HP (현재 HP — 직접 변경 OK) */
+  /** 기본 HP (현재 HP 및 직접 변경 OK) */
   hp: number;
   /** 기본 최대 HP */
   maxHp: number;
@@ -37,54 +34,57 @@ export class StatsComponent extends Component {
   attack: number;
   /** 기본 방어력 */
   defense: number;
-  /** 기본 속도 */
+  /** 기본 이동/행동 속도 */
   speed: number;
 
-  constructor(stats: Partial<Stats> = {}) {
+  constructor(init: Partial<Stats> = {}) {
     super();
-    this.maxHp = stats.maxHp ?? 100;
-    this.hp = stats.hp ?? this.maxHp;
-    this.maxMp = stats.maxMp ?? 50;
-    this.mp = stats.mp ?? this.maxMp;
-    this.attack = stats.attack ?? 10;
-    this.defense = stats.defense ?? 5;
-    this.speed = stats.speed ?? 5;
+    this.maxHp = init.maxHp ?? 100;
+    this.hp = init.hp ?? this.maxHp;
+    this.maxMp = init.maxMp ?? 50;
+    this.mp = init.mp ?? this.maxMp;
+    this.attack = init.attack ?? 10;
+    this.defense = init.defense ?? 5;
+    this.speed = init.speed ?? 10;
   }
 
   // ──────────────────────────────────────────────
-  // 기본 유틸
+  // Computed Getters (버프/디버프 적용 최종값)
   // ──────────────────────────────────────────────
+
+  computedAttack(mods?: StatModsComponent): number {
+    return mods ? mods.compute('attack', this.attack) : this.attack;
+  }
+
+  computedDefense(mods?: StatModsComponent): number {
+    return mods ? mods.compute('defense', this.defense) : this.defense;
+  }
+
+  computedSpeed(mods?: StatModsComponent): number {
+    return mods ? mods.compute('speed', this.speed) : this.speed;
+  }
+
+  computedMaxHp(mods?: StatModsComponent): number {
+    return mods ? mods.compute('maxHp', this.maxHp) : this.maxHp;
+  }
+
+  computedMaxMp(mods?: StatModsComponent): number {
+    return mods ? mods.compute('maxMp', this.maxMp) : this.maxMp;
+  }
 
   get isDead(): boolean {
     return this.hp <= 0;
   }
 
-  get hpRatio(): number {
-    return this.hp / this.maxHp;
+  get isAlive(): boolean {
+    return this.hp > 0;
   }
 
-  // ──────────────────────────────────────────────
-  // 버프/디버프 반영 최종값 (computed)
-  // StatModsComponent가 없으면 기본값을 반환한다.
-  // ──────────────────────────────────────────────
-
-  computedAttack(mods?: StatModsComponent | null): number {
-    return mods?.compute('attack', this.attack) ?? this.attack;
+  get hpPercent(): number {
+    return this.maxHp > 0 ? this.hp / this.maxHp : 0;
   }
 
-  computedDefense(mods?: StatModsComponent | null): number {
-    return mods?.compute('defense', this.defense) ?? this.defense;
-  }
-
-  computedSpeed(mods?: StatModsComponent | null): number {
-    return mods?.compute('speed', this.speed) ?? this.speed;
-  }
-
-  computedMaxHp(mods?: StatModsComponent | null): number {
-    return mods?.compute('maxHp', this.maxHp) ?? this.maxHp;
-  }
-
-  computedMaxMp(mods?: StatModsComponent | null): number {
-    return mods?.compute('maxMp', this.maxMp) ?? this.maxMp;
+  get mpPercent(): number {
+    return this.maxMp > 0 ? this.mp / this.maxMp : 0;
   }
 }

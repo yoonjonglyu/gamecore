@@ -16,6 +16,10 @@ export interface CoreEvents {
   'entity:spawned': { entityId: number; blueprintId: string; tags: string[] };
   'entity:removed': { entityId: number };
 
+  // ─── 반응형 컴포넌트 변경 감지 (Reactive ECS Events) ───
+  'ecs:component:updated': { entityId: number; componentName: string; component: any };
+  'ecs:component:removed': { entityId: number; componentName: string };
+
   // ─── 스탯 변화 ────────────────────────────────
   'stats:hp:changed': { entityId: number; prev: number; next: number; delta: number };
   'stats:died': { entityId: number };
@@ -70,10 +74,17 @@ export interface CoreEvents {
 
   // ─── 스킬 ─────────────────────────────────────
   'skill:used': { casterId: number; skillId: string; targetIds: number[] };
+  'skill:cast:started': { casterId: number; skillId: string; targetIds: number[] };
+  'skill:cast:completed': {
+    casterId: number;
+    skillId: string;
+    targetIds: number[];
+    success: boolean;
+  };
   'skill:failed': {
     casterId: number;
     skillId: string;
-    reason: 'no_skill' | 'cooldown' | 'no_mp' | 'dead' | 'no_target' | 'constraint';
+    reason: 'no_skill' | 'cooldown' | 'no_mp' | 'dead' | 'no_target' | 'constraint' | string;
     /** constraint 실패 시 상세 메시지 */
     constraintReason?: string;
   };

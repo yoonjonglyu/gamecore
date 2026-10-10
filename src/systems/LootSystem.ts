@@ -1,6 +1,7 @@
 /**
  * @module systems/LootSystem
  * 엔티티 사망 시 전리품(드랍 아이템 및 처치 경험치)을 산출하고 수령자에게 지급하는 시스템.
+ * SeededRandom을 주입받아 결정론적 전리품 드랍을 지원한다.
  */
 
 import { ComponentType } from '../core/Component';
@@ -10,6 +11,7 @@ import { CoreEvents } from '../events';
 import { LootComponent } from '../components/LootComponent';
 import { InventoryComponent } from '../components/InventoryComponent';
 import { ProgressionSystem } from './ProgressionSystem';
+import { SeededRandom } from '../math/SeededRandom';
 
 export interface ProcessLootRequest {
   deadEntityId: number;
@@ -17,18 +19,25 @@ export interface ProcessLootRequest {
 }
 
 export class LootSystem extends System<CoreEvents> {
-  /**
-   * query = [] -> 수령자(플레이어)와 전리품 소유자(몬스터)를 동시에 조회해야 하므로
-   * 전체 엔티티를 받는다.
-   */
   readonly query: ComponentType[] = [];
 
   private _pending: ProcessLootRequest[] = [];
   progressionSystem?: ProgressionSystem;
+  private _random?: SeededRandom;
 
-  constructor(progressionSystem?: ProgressionSystem) {
+  constructor(progressionSystem?: ProgressionSystem, random?: SeededRandom) {
     super();
     this.progressionSystem = progressionSystem;
+    this._random = random;
+  }
+
+  setRandom(random: SeededRandom): this {
+    this._random = random;
+    return this;
+  }
+
+  get random(): SeededRandom | undefined {
+    return this._random;
   }
 
   /** 사망 엔티티의 전리품 처리 요청 */
@@ -52,7 +61,7 @@ export class LootSystem extends System<CoreEvents> {
       const lootComp = dead.get(LootComponent);
       if (!lootComp) continue;
 
-      const rolledItems = lootComp.rollDrops();
+      const rolledItems = lootComp.rollDrops(this._random);
       const expGained = lootComp.exp;
 
       const receiver = req.receiverId !== undefined ? entityMap.get(req.receiverId) : undefined;

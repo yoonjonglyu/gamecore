@@ -1,8 +1,7 @@
 {
   "name": "ryuis-gamecore",
-  "version": "0.2.0",
-
-  "description": "게임 state & model 시스템. ECS(Entity-Component-System) + EventBus 기반 범용 게임 코어. 특정 환경에 따라 인터페이스나 API 관련 로직은 달라질 수 있어도 데이터에 관한 로직들은 달라지지 않는다.",
+  "version": "0.3.0",
+  "description": "Headless 게임 상태 및 모델 코어 엔진. ECS(Entity-Component-System) + EventBus 기반 결정론적 PRNG, 전략형 전투 파이프라인, 정밀도 라운딩, 세이브 무결성 및 절차적 전리품 생성 엔진.",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -24,7 +23,6 @@
       "optional": true
     }
   },
-
   "files": [
     "dist",
     "skills",
@@ -39,7 +37,6 @@
     "typecheck": "tsc --noEmit",
     "prepublishOnly": "tsc --noEmit && vitest run && tsc"
   },
-
   "devDependencies": {
     "@types/node": "^26.6.3",
     "@types/react": "^19.3.0",

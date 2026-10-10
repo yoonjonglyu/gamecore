@@ -1,9 +1,5 @@
-/**
- * @module components/LootComponent
- * 엔티티가 사망/파괴 시 드랍할 전리품(Loot Table) 정의 컴포넌트.
- */
-
 import { Component } from '../core/Component';
+import { SeededRandom } from '../math/SeededRandom';
 
 export interface LootItemEntry {
   itemId: string | number;
@@ -32,15 +28,18 @@ export class LootComponent extends Component {
     this.items = props.items ?? [];
   }
 
-  /** 확률 계산을 거쳐 실제 드랍될 아이템 목록을 산출 */
-  rollDrops(): Array<{ itemId: string | number; quantity: number }> {
+  /** 확률 계산을 거쳐 실제 드랍될 아이템 목록을 산출 (SeededRandom 지원) */
+  rollDrops(random?: SeededRandom): Array<{ itemId: string | number; quantity: number }> {
     const drops: Array<{ itemId: string | number; quantity: number }> = [];
 
     for (const entry of this.items) {
-      if (Math.random() <= entry.chance) {
+      const roll = random ? random.chance(entry.chance) : Math.random() <= entry.chance;
+      if (roll) {
         const min = entry.min ?? 1;
         const max = entry.max ?? min;
-        const quantity = Math.floor(Math.random() * (max - min + 1)) + min;
+        const quantity = random
+          ? random.nextInt(min, max)
+          : Math.floor(Math.random() * (max - min + 1)) + min;
         if (quantity > 0) {
           drops.push({ itemId: entry.itemId, quantity });
         }

@@ -17,10 +17,18 @@ export class Entity {
   /** 상태 변경 버전 카운터 (React useSyncExternalStore 등의 스냅샷용) */
   version: number = 0;
   private _listeners: Set<EntityListener> = new Set();
+  /** 소속 World의 이벤트 이미터 참조 */
+  private _worldEmitter?: EntityWorldEmitter;
 
   constructor(tags: string[] = []) {
     this.id = Entity._nextId++;
     tags.forEach((t) => this.tags.add(t));
+  }
+
+  /** @internal World 등록 시 자동 바인딩 */
+  _bindWorld(world: EntityWorldEmitter): this {
+    this._worldEmitter = world;
+    return this;
   }
 
   // ──────────────────────────────────────────────
@@ -46,6 +54,18 @@ export class Entity {
     this.version++;
     for (const listener of this._listeners) {
       listener(this, change);
+    }
+  }
+
+  /**
+   * 컴포넌트 내부 필드 값이 수정되었을 때 명시적으로 변경을 알린다.
+   * 옵저버와 World의 EventBus(ecs:component:updated)에 변경이 전파된다.
+   */
+  notifyUpdated<T extends Component>(type: ComponentType<T>): void {
+    const comp = this.get(type);
+    if (comp) {
+      this.notifyChange({ type: 'component_changed', componentType: type, component: comp });
+      this._worldEmitter?.emitComponentUpdated(this.id, type.name, comp);
     }
   }
 
@@ -82,6 +102,7 @@ export class Entity {
     const type = component.constructor as ComponentType;
     this._components.set(type, component);
     this.notifyChange({ type: 'component_added', componentType: type, component });
+    this._worldEmitter?.emitComponentUpdated(this.id, type.name, component);
     return this;
   }
 
@@ -98,6 +119,7 @@ export class Entity {
     const deleted = this._components.delete(type);
     if (deleted) {
       this.notifyChange({ type: 'component_removed', componentType: type, component: comp });
+      this._worldEmitter?.emitComponentRemoved(this.id, type.name);
     }
     return deleted;
   }
@@ -123,6 +145,11 @@ export class Entity {
     const removedComps = [...this._components.values()];
     this._components.clear();
     this.notifyChange({ type: 'component_removed', payload: removedComps });
+    if (this._worldEmitter) {
+      for (const comp of removedComps) {
+        this._worldEmitter.emitComponentRemoved(this.id, comp.constructor.name);
+      }
+    }
     return this;
   }
 
@@ -140,9 +167,15 @@ export class Entity {
    * 엔티티의 모든 컴포넌트와 태그를 일괄 초기화한다. (오브젝트 풀링/리사이클용)
    */
   clear(): this {
+    const removedComps = [...this._components.values()];
     this._components.clear();
     this.tags.clear();
     this.notifyChange({ type: 'cleared' });
+    if (this._worldEmitter) {
+      for (const comp of removedComps) {
+        this._worldEmitter.emitComponentRemoved(this.id, comp.constructor.name);
+      }
+    }
     return this;
   }
 
@@ -153,6 +186,11 @@ export class Entity {
     this._listeners.clear();
     return this;
   }
+}
+
+export interface EntityWorldEmitter {
+  emitComponentUpdated(entityId: number, componentName: string, component: Component): void;
+  emitComponentRemoved(entityId: number, componentName: string): void;
 }
 
 export type EntityChangeType =

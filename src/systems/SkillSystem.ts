@@ -1,16 +1,12 @@
 /**
  * @module systems/SkillSystem
- * 스킬 사용 요청을 처리한다.
+ * 스킬 사용 요청 및 고수준 선언적 스킬 실행 파이프라인.
  *
- * 처리 순서 (매 update):
- *  1. 쿨다운 틱 (시간 감소, ready 이벤트 발행)
- *  2. 상태이상 틱 (duration 감소, 만료 이벤트 발행)
- *  3. 큐에 쌓인 스킬 사용 요청 처리
- *     a. 검증 (스킬 보유, 쿨다운, MP, 생사 확인)
- *     b. MP 소비
- *     c. 쿨다운 시작
- *     d. 효과 적용 (DamageEffect → CombatSystem 연계 or 직접 처리)
- *     e. skill:used 이벤트 발행
+ * 지원 기능:
+ *  1. canCast: 쿨다운, MP/기력 자원, 생사 여부, 제약조건 자동 판정
+ *  2. castSkill: 리소스 차감 -> 쿨다운 등록 -> 계산 파이프라인 호출 -> StatusEffect/버프 적용 -> 결과 이벤트 일괄 발행
+ *  3. useSkill: 큐 기반 비동기 스킬 실행 지원 (하위 호환)
+ *  4. 쿨다운 및 상태이상 지속시간 자동 틱 관리
  */
 
 import { ComponentType } from '../core/Component';
@@ -19,6 +15,7 @@ import { System } from '../core/System';
 import { CoreEvents } from '../events';
 import { SkillsComponent } from '../components/SkillsComponent';
 import { StatsComponent } from '../components/StatsComponent';
+import { ExtendedStatsComponent } from '../components/ExtendedStatsComponent';
 import { StatusEffectsComponent } from '../components/StatusEffectsComponent';
 import { ConstraintChecker } from '../constraints/ConstraintChecker';
 import { StatModsComponent, StatModifier } from '../components/StatModsComponent';
@@ -38,6 +35,20 @@ export interface UseSkillRequest {
   casterId: number;
   skillId: string;
   /** 대상 entity ID 목록. targetType이 'self'면 비워도 됨 */
+  targetIds: number[];
+}
+
+export interface CanCastResult {
+  ok: boolean;
+  reason?: 'no_skill' | 'cooldown' | 'no_mp' | 'dead' | 'no_target' | 'constraint' | string;
+  details?: string;
+}
+
+export interface CastSkillResult {
+  success: boolean;
+  reason?: string;
+  casterId: number;
+  skillId: string;
   targetIds: number[];
 }
 
@@ -70,13 +81,161 @@ export class SkillSystem extends System<CoreEvents> {
     return this;
   }
 
-  /** 외부에서 스킬 사용 요청 */
+  /** 외부에서 스킬 사용 요청 (큐에 등록하여 다음 update에서 실행) */
   useSkill(req: UseSkillRequest): void {
     this._pending.push(req);
   }
 
   onInit(): void {
     // 패시브 스킬 등 초기 설정이 필요하면 여기서 처리
+  }
+
+  /**
+   * 시전자(caster)가 해당 스킬을 시전 가능한 상태인지 판정한다.
+   * 쿨다운, MP/기력 자원, 생사 여부, 제약조건(스탯/장비 등)을 모두 확인한다.
+   */
+  canCast(caster: Entity, skillDef: SkillDef): CanCastResult {
+    const skills = caster.get(SkillsComponent);
+    const stats = caster.get(StatsComponent);
+    const ext = caster.get(ExtendedStatsComponent);
+
+    // 1. 스킬 습득 여부 (SkillsComponent가 있는 경우)
+    if (skills && !skills.knows(skillDef.id)) {
+      return { ok: false, reason: 'no_skill', details: `Entity does not know skill '${skillDef.id}'` };
+    }
+
+    // 2. 쿨다운 확인
+    if (skills && !skills.isReady(skillDef.id)) {
+      return { ok: false, reason: 'cooldown', details: `Skill '${skillDef.id}' is on cooldown` };
+    }
+
+    // 3. 생사 여부
+    const isDead = stats?.isDead || (ext ? ext.isDead : false);
+    if (isDead) {
+      return { ok: false, reason: 'dead', details: 'Caster is dead' };
+    }
+
+    // 4. 자원(MP/기력) 확인
+    if (skillDef.mpCost > 0) {
+      if (stats && stats.mp < skillDef.mpCost) {
+        return { ok: false, reason: 'no_mp', details: `Required MP: ${skillDef.mpCost}, current: ${stats.mp}` };
+      }
+      if (ext) {
+        const currentMp = ext.getResource('mp');
+        if (currentMp < skillDef.mpCost) {
+          return { ok: false, reason: 'no_mp', details: `Required MP: ${skillDef.mpCost}, current: ${currentMp}` };
+        }
+      }
+    }
+
+    // 5. 제약조건(Constraints) 평가
+    if (skillDef.constraints && skillDef.constraints.length > 0) {
+      const check = this.constraintChecker.check(caster, skillDef.constraints);
+      if (!check.ok) {
+        return { ok: false, reason: 'constraint', details: check.reason };
+      }
+    }
+
+    return { ok: true };
+  }
+
+  /**
+   * 고수준 선언적 스킬 즉시 시전 파이프라인.
+   * 리소스 차감 -> 쿨다운 등록 -> 계산 파이프라인 호출 -> StatusEffect/버프 적용 -> 결과 이벤트 일괄 발행.
+   */
+  castSkill(caster: Entity, targetEntities: Entity[], skillDef: SkillDef): CastSkillResult {
+    // 1. 시전 가능 여부 검증
+    const check = this.canCast(caster, skillDef);
+    if (!check.ok) {
+      this.bus.emit('skill:failed', {
+        casterId: caster.id,
+        skillId: skillDef.id,
+        reason: check.reason as any,
+        constraintReason: check.details,
+      });
+      return {
+        success: false,
+        reason: check.reason,
+        casterId: caster.id,
+        skillId: skillDef.id,
+        targetIds: targetEntities.map((t) => t.id),
+      };
+    }
+
+    // 2. 대상 유효성 검증
+    const finalTargets = skillDef.targetType === 'self' ? [caster] : targetEntities.filter((t) => !!t);
+    if (finalTargets.length === 0 && skillDef.targetType !== 'self') {
+      this.bus.emit('skill:failed', {
+        casterId: caster.id,
+        skillId: skillDef.id,
+        reason: 'no_target',
+      });
+      return {
+        success: false,
+        reason: 'no_target',
+        casterId: caster.id,
+        skillId: skillDef.id,
+        targetIds: [],
+      };
+    }
+
+    const targetIds = finalTargets.map((t) => t.id);
+
+    // 시전 시작 이벤트 발행
+    this.bus.emit('skill:cast:started', {
+      casterId: caster.id,
+      skillId: skillDef.id,
+      targetIds,
+    });
+
+    // 3. 리소스 차감 (StatsComponent 또는 ExtendedStatsComponent)
+    if (skillDef.mpCost > 0) {
+      const stats = caster.get(StatsComponent);
+      const ext = caster.get(ExtendedStatsComponent);
+      if (stats) {
+        stats.mp = Math.max(0, stats.mp - skillDef.mpCost);
+      }
+      if (ext && ext.hasResource('mp')) {
+        ext.modifyResource('mp', -skillDef.mpCost, 'maxMp');
+      }
+    }
+
+    // 4. 쿨다운 시작
+    const skills = caster.get(SkillsComponent);
+    skills?._startCooldown(skillDef.id);
+
+    // 5. 효과 적용 (Damage, Heal, Buff, DoT 등)
+    for (const effect of skillDef.effects) {
+      for (const target of finalTargets) {
+        this.executor.execute(effect, {
+          caster,
+          target,
+          skillDef,
+          bus: this.bus,
+        });
+      }
+    }
+
+    // 6. 결과 이벤트 일괄 발행
+    this.bus.emit('skill:used', {
+      casterId: caster.id,
+      skillId: skillDef.id,
+      targetIds,
+    });
+
+    this.bus.emit('skill:cast:completed', {
+      casterId: caster.id,
+      skillId: skillDef.id,
+      targetIds,
+      success: true,
+    });
+
+    return {
+      success: true,
+      casterId: caster.id,
+      skillId: skillDef.id,
+      targetIds,
+    };
   }
 
   update(entities: Entity[], delta: number, mode: 'turn' | 'realtime' = 'realtime'): void {
@@ -88,13 +247,12 @@ export class SkillSystem extends System<CoreEvents> {
       this._tickStatuses(entity, delta);
     }
 
-    // 2. 스킬 사용 요청 처리
+    // 2. 큐에 쌓인 스킬 사용 요청 일괄 처리
     for (const req of this._pending) {
       this._processUse(req, entityMap);
     }
     this._pending = [];
   }
-
 
   // ──────────────────────────────────────────────
   // 틱
@@ -121,7 +279,7 @@ export class SkillSystem extends System<CoreEvents> {
   }
 
   // ──────────────────────────────────────────────
-  // 스킬 사용 처리
+  // 스킬 사용 처리 (내부)
   // ──────────────────────────────────────────────
 
   private _processUse(
@@ -132,110 +290,17 @@ export class SkillSystem extends System<CoreEvents> {
     if (!caster) return;
 
     const skills = caster.get(SkillsComponent);
-    const casterStats = caster.get(StatsComponent);
-
-    // ── 검증 ──────────────────────────────────
-
     if (!skills?.knows(req.skillId)) {
       this.bus.emit('skill:failed', { casterId: req.casterId, skillId: req.skillId, reason: 'no_skill' });
       return;
     }
 
-    if (!skills.isReady(req.skillId)) {
-      this.bus.emit('skill:failed', { casterId: req.casterId, skillId: req.skillId, reason: 'cooldown' });
-      return;
-    }
-
-    const def = skills.getDef(req.skillId)!;
-
-    if (casterStats?.isDead) {
-      this.bus.emit('skill:failed', { casterId: req.casterId, skillId: req.skillId, reason: 'dead' });
-      return;
-    }
-
-    if (casterStats && casterStats.mp < def.mpCost) {
-      this.bus.emit('skill:failed', { casterId: req.casterId, skillId: req.skillId, reason: 'no_mp' });
-      return;
-    }
-
-    // ── 제약조건 평가 ──────────────────────────
-
-    if (def.constraints && def.constraints.length > 0) {
-      const result = this.constraintChecker.check(caster, def.constraints);
-      if (!result.ok) {
-        this.bus.emit('skill:failed', {
-          casterId: req.casterId,
-          skillId: req.skillId,
-          reason: 'constraint',
-          constraintReason: result.reason,
-        });
-        return;
-      }
-    }
-
-    // ── 실제 대상 결정 ────────────────────────
+    const def = skills.getDef(req.skillId);
+    if (!def) return;
 
     const targets = this._resolveTargets(def, req.targetIds, entityMap);
-    if (targets.length === 0 && def.targetType !== 'self') {
-      this.bus.emit('skill:failed', { casterId: req.casterId, skillId: req.skillId, reason: 'no_target' });
-      return;
-    }
-    const finalTargets = def.targetType === 'self' ? [caster] : targets;
-
-    // ── MP 소비 + 쿨다운 시작 ─────────────────
-
-    if (casterStats) casterStats.mp = Math.max(0, casterStats.mp - def.mpCost);
-    skills._startCooldown(req.skillId);
-
-    // ── 효과 적용 ─────────────────────────────
-
-    for (const effect of def.effects) {
-      for (const target of finalTargets) {
-        this.executor.execute(effect, {
-          caster,
-          target,
-          skillDef: def,
-          bus: this.bus,
-        });
-      }
-    }
-
-    this.bus.emit('skill:used', {
-      casterId: req.casterId,
-      skillId: req.skillId,
-      targetIds: finalTargets.map((t) => t.id),
-    });
+    this.castSkill(caster, targets, def);
   }
-
-  // ──────────────────────────────────────────────
-  // 효과 적용
-  // ──────────────────────────────────────────────
-
-  private _applyEffect(
-    effect: SkillEffectDef,
-    caster: Entity,
-    target: Entity,
-    def?: SkillDef,
-  ): void {
-    this.executor.execute(effect, {
-      caster,
-      target,
-      skillDef: def ?? {
-        id: 'unknown',
-        name: 'unknown',
-        mpCost: 0,
-        cooldown: 0,
-        targetType: 'single_enemy',
-        effects: [effect],
-      },
-      bus: this.bus,
-    });
-  }
-
-
-  // ──────────────────────────────────────────────
-  // 유틸
-  // ──────────────────────────────────────────────
 
   private _resolveTargets(
     def: SkillDef,

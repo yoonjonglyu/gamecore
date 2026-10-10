@@ -14,6 +14,8 @@ import { Entity } from '../core/Entity';
 import { StatsComponent } from '../components/StatsComponent';
 import { ExtendedStatsComponent } from '../components/ExtendedStatsComponent';
 import { BarrierComponent } from '../components/BarrierComponent';
+import { SeededRandom } from '../math/SeededRandom';
+import { CombatRoundingConfig, DEFAULT_ROUNDING_CONFIG, applyRounding } from '../math/RoundingPolicy';
 
 export type DamageType = 'physical' | 'magical' | 'true' | string;
 
@@ -40,6 +42,8 @@ export interface AttackRequest {
   lifesteal?: number;
   /** 피해 반사 비율 0~1 */
   reflected?: number;
+  /** 대미지/스탯 라운딩 정책 */
+  rounding?: CombatRoundingConfig;
   /** 임의의 커스텀 추가 데이터 */
   custom?: Record<string, any>;
 }
@@ -48,6 +52,11 @@ export interface CombatContext {
   attacker: Entity;
   target: Entity;
   request: AttackRequest;
+
+  /** 결정론적 난수 생성기 (선택) */
+  random?: SeededRandom;
+  /** 대미지/수치 라운딩 정책 */
+  rounding?: CombatRoundingConfig;
 
   // ── Step 1: Pre-Hit ───────────────────────────
   hitChance: number;
@@ -99,15 +108,27 @@ export interface DamageCalculator {
  * 기본 데미지 계산 전략:
  * - true 데미지: 방어력 무시 (rawDamage 그대로)
  * - physical / 기타: targetDefense * (1 - armorPen) 차감
+ * - 설정된 라운딩 정책(CombatRoundingConfig) 적용
  */
 export class DefaultDamageCalculator implements DamageCalculator {
+  readonly rounding?: CombatRoundingConfig;
+
+  constructor(rounding?: CombatRoundingConfig) {
+    this.rounding = rounding;
+  }
+
   calculate(ctx: CombatContext): number {
+    const config = ctx.rounding ?? this.rounding ?? DEFAULT_ROUNDING_CONFIG;
+    let result = 0;
+
     if (ctx.damageType === 'true') {
-      return Math.max(0, ctx.rawDamage);
+      result = Math.max(0, ctx.rawDamage);
+    } else {
+      const effectiveDefense = Math.max(0, ctx.targetDefense * (1 - ctx.armorPen));
+      result = Math.max(0, ctx.rawDamage - effectiveDefense);
     }
 
-    const effectiveDefense = Math.max(0, ctx.targetDefense * (1 - ctx.armorPen));
-    return Math.max(0, ctx.rawDamage - effectiveDefense);
+    return applyRounding(result, config);
   }
 }
 
@@ -124,27 +145,41 @@ export interface CombatMiddleware {
 
 /**
  * 기본 PreHit 미들웨어 (명중/회피, 크리티컬 계산)
+ * - SeededRandom 주입 시 결정론적 난수 사용
+ * - CombatRoundingConfig 주입 시 rawDamage에 라운딩 적용
  */
 export class DefaultPreHitMiddleware implements CombatMiddleware {
   name = 'DefaultPreHit';
+  readonly random?: SeededRandom;
+  readonly rounding?: CombatRoundingConfig;
+
+  constructor(options?: { random?: SeededRandom; rounding?: CombatRoundingConfig }) {
+    this.random = options?.random;
+    this.rounding = options?.rounding;
+  }
 
   onPreHit(ctx: CombatContext): void {
+    const rng = ctx.random ?? this.random;
+    const roll = (prob: number) => (rng ? rng.chance(prob) : Math.random() < prob);
+
     // 회피 판정
-    if (ctx.evasionChance > 0 && Math.random() < ctx.evasionChance) {
+    if (ctx.evasionChance > 0 && roll(ctx.evasionChance)) {
       ctx.isEvaded = true;
       ctx.isMiss = true;
       return;
     }
 
     // 명중 판정
-    if (ctx.hitChance < 1.0 && Math.random() > ctx.hitChance) {
+    if (ctx.hitChance < 1.0 && !roll(ctx.hitChance)) {
       ctx.isMiss = true;
       return;
     }
 
     // 크리티컬 판정
-    ctx.isCritical = Math.random() < ctx.critChance;
-    ctx.rawDamage = ctx.isCritical ? ctx.baseDamage * ctx.critMultiplier : ctx.baseDamage;
+    ctx.isCritical = roll(ctx.critChance);
+    const unroundedRaw = ctx.isCritical ? ctx.baseDamage * ctx.critMultiplier : ctx.baseDamage;
+    const roundingConfig = ctx.rounding ?? this.rounding;
+    ctx.rawDamage = applyRounding(unroundedRaw, roundingConfig);
   }
 }
 

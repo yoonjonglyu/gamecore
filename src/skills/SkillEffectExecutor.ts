@@ -82,7 +82,7 @@ export class SkillEffectExecutor {
       const maxHp = casterStats ? casterStats.maxHp : (casterExt ? casterExt.get('maxHp') : 100);
       const targetDef = targetStats ? targetStats.defense : (targetExt ? targetExt.get('defense') : 0);
 
-      let power = effect.basePower;
+      let power = effect.basePower ?? (effect as any).baseDamage ?? 0;
       if (effect.scaling) {
         if (effect.scaling.attack) power += atk * effect.scaling.attack;
         if (effect.scaling.maxHp) power += maxHp * effect.scaling.maxHp;

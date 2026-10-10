@@ -1,37 +1,36 @@
 /**
- * GameCore — 공개 API 진입점
+ * @module GameCore
+ * ECS(Entity-Component-System) + EventBus 기반 게임 상태 & 모델 코어 엔진.
  *
- * 사용 예시:
- * ```ts
- * import { World, StatsComponent, IdentityComponent, CombatSystem, CoreEvents } from 'gamecore';
- *
- * const world = new World<CoreEvents>();
- * const combat = new CombatSystem();
- * world.addSystem(combat);
- *
- * const player = world.createEntity('player');
- * player.add(new IdentityComponent(1, 'Hero')).add(new StatsComponent({ maxHp: 200 }));
- *
- * world.bus.on('stats:died', ({ entityId }) => console.log(entityId, 'died'));
- * combat.requestAttack({ attackerId: enemy.id, targetId: player.id });
- * world.update(16); // 16ms 틱
- * ```
+ * 브라우저, Node.js, Web Worker, React Native 등 100% 플랫폼 독립적 동작 보장.
+ * 0-Dependency 순수 TypeScript 아키텍처.
  */
 
-// ─── Core ────────────────────────────────────────────────────────────────────
+// ─── Core ECS ─────────────────────────────────
+export { World } from './core/World';
+export type { WorldListener, WorldChangeEvent, WorldOptions } from './core/World';
+export { Entity } from './core/Entity';
+export type { EntityListener, EntityChange, EntityChangeType, EntityWorldEmitter } from './core/Entity';
 export { Component } from './core/Component';
 export type { ComponentType } from './core/Component';
-export { Entity } from './core/Entity';
-export type { EntityChange, EntityChangeType, EntityListener } from './core/Entity';
-export { EventBus } from './core/EventBus';
-export type { EventMap } from './core/EventBus';
 export { System } from './core/System';
-export { World } from './core/World';
-export type { WorldChangeEvent, WorldListener } from './core/World';
+export { EventBus } from './core/EventBus';
+export type { EventMap, EventHandler } from './core/EventBus';
+export { GameWorldManager } from './core/GameWorldManager';
+export type { GameWorldManagerOptions } from './core/GameWorldManager';
 
-// ─── Components ──────────────────────────────────────────────────────────────
+// ─── Math, PRNG & Precision ───────────────────
+export { SeededRandom } from './math/SeededRandom';
+export type { PRNGState } from './math/SeededRandom';
+export {
+  applyRounding,
+  DEFAULT_ROUNDING_CONFIG,
+} from './math/RoundingPolicy';
+export type { RoundingMode, CombatRoundingConfig } from './math/RoundingPolicy';
+
+// ─── Components ───────────────────────────────
 export { StatsComponent } from './components/StatsComponent';
-export type { Stats } from './components/StatsComponent';
+export type { StatsProps } from './components/StatsComponent';
 export { ExtendedStatsComponent } from './components/ExtendedStatsComponent';
 export type { ExtendedStatsInit } from './components/ExtendedStatsComponent';
 export { BarrierComponent } from './components/BarrierComponent';
@@ -44,14 +43,14 @@ export type { ItemCategory, ItemSpec } from './components/ItemDefComponent';
 export { ClassComponent } from './components/ClassComponent';
 export { EquipmentComponent } from './components/EquipmentComponent';
 export type { EquipSlot, EquippedItem } from './components/EquipmentComponent';
-export { StatModsComponent } from './components/StatModsComponent';
+export { StatModsComponent, ModsComponent } from './components/StatModsComponent';
 export type { StatModifier, ModifiableStat } from './components/StatModsComponent';
 export { ProgressionComponent } from './components/ProgressionComponent';
 export type { StatGrowth, ExpFormula, ProgressionProps } from './components/ProgressionComponent';
 export { LootComponent } from './components/LootComponent';
 export type { LootItemEntry, LootProps } from './components/LootComponent';
 
-// ─── Stat Pipeline Engine ───────────────────────────────────────────────────
+// ─── Stat Pipeline Engine ─────────────────────
 export { StatPipeline } from './stats/StatPipeline';
 export type {
   StatReader,
@@ -61,9 +60,10 @@ export type {
   StatCalculationBreakdown,
 } from './stats/StatPipeline';
 
-// ─── Combat Pipeline ─────────────────────────────────────────────────────────
+// ─── Combat Pipeline ─────────────────────────
 export type {
   DamageType,
+  AttackRequest,
   CombatContext,
   DamageCalculator,
   CombatMiddleware,
@@ -75,7 +75,7 @@ export {
   DefaultPostHitMiddleware,
 } from './combat/CombatPipeline';
 
-// ─── Constraints ─────────────────────────────────────────────────────────────
+// ─── Constraints ──────────────────────────────
 export type {
   Constraint,
   ConstraintResult,
@@ -91,13 +91,13 @@ export type {
 export { ConstraintChecker, globalConstraintChecker } from './constraints/ConstraintChecker';
 export type { CustomHandler } from './constraints/ConstraintChecker';
 
-// ─── Systems ─────────────────────────────────────────────────────────────────
+// ─── Systems ──────────────────────────────────
 export { CombatSystem } from './systems/CombatSystem';
-export type { AttackRequest, CombatSystemOptions } from './systems/CombatSystem';
+export type { CombatSystemOptions } from './systems/CombatSystem';
 export { InventorySystem } from './systems/InventorySystem';
 export type { InventoryRequest } from './systems/InventorySystem';
 export { SkillSystem } from './systems/SkillSystem';
-export type { UseSkillRequest } from './systems/SkillSystem';
+export type { UseSkillRequest, CanCastResult, CastSkillResult } from './systems/SkillSystem';
 export { StatusEffectSystem } from './systems/StatusEffectSystem';
 export type { ApplyStatusOptions } from './systems/StatusEffectSystem';
 export { StatModSystem } from './systems/StatModSystem';
@@ -112,7 +112,7 @@ export { TurnSystem } from './systems/TurnSystem';
 export { TurnComponent } from './components/TurnComponent';
 export type { TurnProps } from './components/TurnComponent';
 
-// ─── Spatial & Grid ──────────────────────────────────────────────────────────
+// ─── Spatial & Grid ───────────────────────────
 export { PositionComponent } from './spatial/PositionComponent';
 export type { PositionProps } from './spatial/PositionComponent';
 export { GridMap } from './spatial/GridMap';
@@ -120,7 +120,7 @@ export type { Tile } from './spatial/GridMap';
 export { MovementSystem } from './spatial/MovementSystem';
 export type { MoveRequest } from './spatial/MovementSystem';
 
-// ─── Skills ──────────────────────────────────────────────────────────────────
+// ─── Skills ───────────────────────────────────
 export type {
   SkillDef,
   SkillEffectDef,
@@ -137,24 +137,36 @@ export type { SkillSlot } from './components/SkillsComponent';
 export { StatusEffectsComponent } from './components/StatusEffectsComponent';
 export type { StatusInstance } from './components/StatusEffectsComponent';
 
-// ─── Data & Registry ─────────────────────────────────────────────────────────
+// ─── Data & Procedural Generation ────────────
 export { Registry } from './data/Registry';
 export type { Identifiable } from './data/Registry';
 export { DataManager } from './data/DataManager';
 export type { GameDataBundle } from './data/DataManager';
-export type { ItemDef } from './data/ItemDef';
+export { ItemDef } from './data/ItemDef';
+export { DropTable } from './data/DropTable';
+export type { DropEntry, DropResult } from './data/DropTable';
+export { AffixGenerator } from './data/AffixGenerator';
+export type {
+  AffixDef,
+  AffixType,
+  RolledAffix,
+  GeneratedItem,
+  RarityRule,
+} from './data/AffixGenerator';
 
-// ─── Factory & Blueprints ────────────────────────────────────────────────────
+// ─── Factory & Blueprints ─────────────────────
 export type { EntityBlueprint, SpawnOptions, BlueprintItemEntry } from './factory/Blueprint';
 export { EntityFactory } from './factory/EntityFactory';
 export type { CustomComponentHandler, FactoryContext } from './factory/EntityFactory';
 
-// ─── Serialization & Save/Load ───────────────────────────────────────────────
+// ─── Serialization & SaveManager ─────────────
 export { ComponentRegistry, defaultComponentRegistry } from './serialization/ComponentRegistry';
 export type { ComponentSerializer, ComponentDeserializer, ComponentRegistration } from './serialization/ComponentRegistry';
 export { WorldSerializer, defaultWorldSerializer } from './serialization/WorldSerializer';
 export type { SerializedWorld, SerializedEntity, SerializedComponent, SerializeOptions, DeserializeOptions } from './serialization/WorldSerializer';
+export { SaveManager } from './serialization/SaveManager';
+export type { SaveEnvelope, DeserializationResult, MigrationFunction, MigrationStep } from './serialization/SaveManager';
+export { sha256, hmacSha256 } from './serialization/crypto';
 
-// ─── Events ──────────────────────────────────────────────────────────────────
+// ─── Events ───────────────────────────────────
 export type { CoreEvents } from './events';
-

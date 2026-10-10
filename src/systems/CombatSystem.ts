@@ -22,12 +22,18 @@ import {
   DefaultShieldAbsorbMiddleware,
   DefaultPostHitMiddleware,
 } from '../combat/CombatPipeline';
+import { SeededRandom } from '../math/SeededRandom';
+import { CombatRoundingConfig } from '../math/RoundingPolicy';
 
 export type { AttackRequest } from '../combat/CombatPipeline';
 
 export interface CombatSystemOptions {
   calculator?: DamageCalculator;
   middlewares?: CombatMiddleware[];
+  /** 결정론적 난수 생성기 (Seeded PRNG) */
+  random?: SeededRandom;
+  /** 대미지 및 수치 라운딩 정책 */
+  rounding?: CombatRoundingConfig;
 }
 
 export class CombatSystem extends System<CoreEvents> {
@@ -36,21 +42,45 @@ export class CombatSystem extends System<CoreEvents> {
   private _pendingAttacks: AttackRequest[] = [];
   private _calculator: DamageCalculator;
   private _middlewares: CombatMiddleware[] = [];
+  private _random?: SeededRandom;
+  private _rounding?: CombatRoundingConfig;
 
   constructor(options: CombatSystemOptions = {}) {
     super();
-    this._calculator = options.calculator ?? new DefaultDamageCalculator();
+    this._random = options.random;
+    this._rounding = options.rounding;
+    this._calculator = options.calculator ?? new DefaultDamageCalculator(this._rounding);
 
     if (options.middlewares) {
       this._middlewares = [...options.middlewares];
     } else {
       // 기본 미들웨어 세팅
       this._middlewares = [
-        new DefaultPreHitMiddleware(),
+        new DefaultPreHitMiddleware({ random: this._random, rounding: this._rounding }),
         new DefaultShieldAbsorbMiddleware(),
         new DefaultPostHitMiddleware(),
       ];
     }
+  }
+
+  /** 난수 생성기 주입/교체 */
+  setRandom(random: SeededRandom): this {
+    this._random = random;
+    return this;
+  }
+
+  get random(): SeededRandom | undefined {
+    return this._random;
+  }
+
+  /** 라운딩 정책 주입/교체 */
+  setRounding(rounding: CombatRoundingConfig): this {
+    this._rounding = rounding;
+    return this;
+  }
+
+  get rounding(): CombatRoundingConfig | undefined {
+    return this._rounding;
   }
 
   /** 데미지 계산 전략 교체 */
@@ -114,6 +144,8 @@ export class CombatSystem extends System<CoreEvents> {
       attacker,
       target,
       request: req,
+      random: this._random,
+      rounding: req.rounding ?? this._rounding,
 
       // Step 1: Pre-Hit
       hitChance: req.hitChance ?? 1.0,
