@@ -16,6 +16,7 @@ import { ExtendedStatsComponent } from '../components/ExtendedStatsComponent';
 import { BarrierComponent } from '../components/BarrierComponent';
 import { SeededRandom } from '../math/SeededRandom';
 import { CombatRoundingConfig, DEFAULT_ROUNDING_CONFIG, applyRounding } from '../math/RoundingPolicy';
+import type { CuePayload } from './CueProtocol';
 
 export type DamageType = 'physical' | 'magical' | 'true' | string;
 
@@ -44,6 +45,8 @@ export interface AttackRequest {
   reflected?: number;
   /** 대미지/스탯 라운딩 정책 */
   rounding?: CombatRoundingConfig;
+  /** 오디오 및 VFX 연출 규격 페이로드 (CueProtocol) */
+  cue?: CuePayload;
   /** 임의의 커스텀 추가 데이터 */
   custom?: Record<string, any>;
 }
@@ -57,6 +60,8 @@ export interface CombatContext {
   random?: SeededRandom;
   /** 대미지/수치 라운딩 정책 */
   rounding?: CombatRoundingConfig;
+  /** 오디오 및 VFX 연출 규격 페이로드 (CueProtocol) */
+  cue?: CuePayload;
 
   // ── Step 1: Pre-Hit ───────────────────────────
   hitChance: number;

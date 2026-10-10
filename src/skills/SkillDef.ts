@@ -23,6 +23,7 @@
  */
 
 import { Constraint } from '../constraints/Constraint';
+import type { CuePayload } from '../combat/CueProtocol';
 
 // ─── Effect 정의 ─────────────────────────────────────────────────────────────
 
@@ -102,4 +103,6 @@ export interface SkillDef {
   constraints?: Constraint[];
   /** 패시브 스킬 여부 (패시브는 SkillSystem이 자동 처리) */
   passive?: boolean;
+  /** 오디오 및 VFX 연출 규격 페이로드 (CueProtocol) */
+  cue?: CuePayload;
 }

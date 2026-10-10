@@ -2,7 +2,7 @@
  * @module GameCore
  * ECS(Entity-Component-System) + EventBus 기반 게임 상태 & 모델 코어 엔진.
  *
- * 브라우저, Node.js, Web Worker, React Native 등 100% 플랫폼 독립적 동작 보장.
+ * 브라우저, Node.js, Web Worker, React Native, Wasm/Godot 브릿지 등 100% 플랫폼 독립적 동작 보장.
  * 0-Dependency 순수 TypeScript 아키텍처.
  */
 
@@ -18,6 +18,12 @@ export { EventBus } from './core/EventBus';
 export type { EventMap, EventHandler } from './core/EventBus';
 export { GameWorldManager } from './core/GameWorldManager';
 export type { GameWorldManagerOptions } from './core/GameWorldManager';
+
+// ─── Blackboard & Scheduling ──────────────────
+export { Blackboard } from './core/Blackboard';
+export type { BlackboardListener } from './core/Blackboard';
+export { TimerScheduler } from './core/TimerScheduler';
+export type { ScheduledTask, TaskScheduleMode } from './core/TimerScheduler';
 
 // ─── Math, PRNG & Precision ───────────────────
 export { SeededRandom } from './math/SeededRandom';
@@ -49,6 +55,16 @@ export { ProgressionComponent } from './components/ProgressionComponent';
 export type { StatGrowth, ExpFormula, ProgressionProps } from './components/ProgressionComponent';
 export { LootComponent } from './components/LootComponent';
 export type { LootItemEntry, LootProps } from './components/LootComponent';
+export { FSMComponent } from './components/FSMComponent';
+export type { StateConfig, StateTransitionRule, FSMSerializedState } from './components/FSMComponent';
+export { QuestsComponent } from './components/QuestsComponent';
+export type {
+  QuestDef,
+  QuestInstance,
+  QuestObjective,
+  QuestReward,
+  QuestState,
+} from './components/QuestsComponent';
 
 // ─── Stat Pipeline Engine ─────────────────────
 export { StatPipeline } from './stats/StatPipeline';
@@ -60,7 +76,7 @@ export type {
   StatCalculationBreakdown,
 } from './stats/StatPipeline';
 
-// ─── Combat Pipeline ─────────────────────────
+// ─── Combat & Cue Protocol ───────────────────
 export type {
   DamageType,
   AttackRequest,
@@ -74,6 +90,13 @@ export {
   DefaultShieldAbsorbMiddleware,
   DefaultPostHitMiddleware,
 } from './combat/CombatPipeline';
+export { CueQueue, createCue } from './combat/CueProtocol';
+export type {
+  CuePayload,
+  CueEvent,
+  CueShakeConfig,
+  CueFlashConfig,
+} from './combat/CueProtocol';
 
 // ─── Constraints ──────────────────────────────
 export type {
@@ -111,6 +134,8 @@ export type { ProcessLootRequest } from './systems/LootSystem';
 export { TurnSystem } from './systems/TurnSystem';
 export { TurnComponent } from './components/TurnComponent';
 export type { TurnProps } from './components/TurnComponent';
+export { FSMSystem } from './systems/FSMSystem';
+export { QuestSystem } from './systems/QuestSystem';
 
 // ─── Spatial & Grid ───────────────────────────
 export { PositionComponent } from './spatial/PositionComponent';
@@ -119,6 +144,7 @@ export { GridMap } from './spatial/GridMap';
 export type { Tile } from './spatial/GridMap';
 export { MovementSystem } from './spatial/MovementSystem';
 export type { MoveRequest } from './spatial/MovementSystem';
+export { SpatialHashGrid } from './spatial/SpatialHashGrid';
 
 // ─── Skills ───────────────────────────────────
 export type {

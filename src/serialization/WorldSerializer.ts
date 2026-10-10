@@ -23,6 +23,7 @@ export interface SerializedWorld {
   version: string;
   timestamp: number;
   entities: SerializedEntity[];
+  blackboard?: Record<string, any>;
 }
 
 export interface SerializeOptions {
@@ -73,6 +74,7 @@ export class WorldSerializer {
       version: '1.0',
       timestamp: Date.now(),
       entities: serializedEntities,
+      blackboard: world.blackboard ? world.blackboard.toJSON() : undefined,
     };
   }
 
@@ -99,6 +101,10 @@ export class WorldSerializer {
       for (const e of [...targetWorld.entities]) {
         targetWorld.removeEntity(e.id);
       }
+    }
+
+    if (parsed.blackboard && targetWorld.blackboard) {
+      targetWorld.blackboard.fromJSON(parsed.blackboard);
     }
 
     const createdEntities: Entity[] = [];

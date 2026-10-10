@@ -9,17 +9,30 @@ import { Entity, EntityWorldEmitter } from './Entity';
 import { EventBus, EventMap } from './EventBus';
 import { System } from './System';
 import { SeededRandom } from '../math/SeededRandom';
+import { Blackboard } from './Blackboard';
+import { TimerScheduler, ScheduledTask } from './TimerScheduler';
 
 export interface WorldOptions<Events extends EventMap = EventMap> {
   bus?: EventBus<Events>;
   seed?: number | string;
   random?: SeededRandom;
+  blackboard?: Blackboard;
+  scheduler?: TimerScheduler;
 }
 
 export class World<Events extends EventMap = EventMap> implements EntityWorldEmitter {
   readonly bus: EventBus<Events>;
   /** 결정론적 난수 생성기 (Seeded PRNG) */
   readonly random: SeededRandom;
+  /** 전역 게임 상태 & 플래그 저장소 */
+  readonly blackboard: Blackboard;
+  /** 시간 및 턴 기반 지연/반복 스케줄러 */
+  readonly scheduler: TimerScheduler;
+
+  /** bus의 편의 별칭 */
+  get events(): EventBus<Events> {
+    return this.bus;
+  }
 
   private _entities: Map<number, Entity> = new Map();
   private _systems: System<Events>[] = [];
@@ -41,14 +54,57 @@ export class World<Events extends EventMap = EventMap> implements EntityWorldEmi
     if (busOrOptions && 'emit' in busOrOptions && typeof (busOrOptions as any).emit === 'function') {
       this.bus = busOrOptions as EventBus<Events>;
       this.random = new SeededRandom(seed ?? Date.now());
+      this.blackboard = new Blackboard();
+      this.scheduler = new TimerScheduler();
     } else if (busOrOptions && typeof busOrOptions === 'object') {
       const opts = busOrOptions as WorldOptions<Events>;
       this.bus = opts.bus ?? new EventBus<Events>();
       this.random = opts.random ?? new SeededRandom(opts.seed ?? seed ?? Date.now());
+      this.blackboard = opts.blackboard ?? new Blackboard();
+      this.scheduler = opts.scheduler ?? new TimerScheduler();
     } else {
       this.bus = new EventBus<Events>();
       this.random = new SeededRandom(seed ?? Date.now());
+      this.blackboard = new Blackboard();
+      this.scheduler = new TimerScheduler();
     }
+
+    // 전역 블랙보드 변경 시 버스로 이벤트 전파
+    this.blackboard.subscribe((key, prev, next) => {
+      (this.bus as any).emit('blackboard:changed', { key, prev, next });
+    });
+  }
+
+  // ──────────────────────────────────────────────
+  // Scheduler Helpers
+  // ──────────────────────────────────────────────
+
+  /**
+   * 지정된 밀리초(ms) 후에 콜백을 1회 실행하도록 예약합니다.
+   */
+  schedule(delayMs: number, callback: () => void): ScheduledTask {
+    return this.scheduler.schedule(delayMs, callback);
+  }
+
+  /**
+   * 지정된 밀리초(ms) 주기마다 콜백을 반복 실행하도록 예약합니다.
+   */
+  scheduleEvery(intervalMs: number, callback: () => void, times?: number): ScheduledTask {
+    return this.scheduler.scheduleEvery(intervalMs, callback, times);
+  }
+
+  /**
+   * 지정된 턴(turn) 경과 후에 콜백을 1회 실행하도록 예약합니다.
+   */
+  scheduleTurns(turns: number, callback: () => void): ScheduledTask {
+    return this.scheduler.scheduleTurns(turns, callback);
+  }
+
+  /**
+   * 지정된 턴(turn) 주기마다 콜백을 반복 실행하도록 예약합니다.
+   */
+  scheduleTurnsEvery(intervalTurns: number, callback: () => void, times?: number): ScheduledTask {
+    return this.scheduler.scheduleTurnsEvery(intervalTurns, callback, times);
   }
 
   // ──────────────────────────────────────────────
@@ -249,6 +305,9 @@ export class World<Events extends EventMap = EventMap> implements EntityWorldEmi
    * @param mode 실행 모드 ('realtime' | 'turn')
    */
   update(delta: number, mode: 'turn' | 'realtime' = 'realtime'): void {
+    // 스케줄러 틱 실행 (시간 또는 턴)
+    this.scheduler.update(delta, mode === 'turn' ? 'turn' : 'time');
+
     // 지연 삭제 처리
     this._flushRemovals();
     // 컴포넌트 추가/제거 후 캐시가 stale해질 수 있으므로 매 틱 재빌드

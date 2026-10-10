@@ -16,6 +16,8 @@ import { TurnComponent } from '../components/TurnComponent';
 import { PositionComponent } from '../spatial/PositionComponent';
 import { BarrierComponent } from '../components/BarrierComponent';
 import { ExtendedStatsComponent } from '../components/ExtendedStatsComponent';
+import { FSMComponent } from '../components/FSMComponent';
+import { QuestsComponent } from '../components/QuestsComponent';
 
 
 export type ComponentSerializer<T extends Component = Component> = (component: T) => Record<string, unknown>;
@@ -221,6 +223,22 @@ export class ComponentRegistry {
         }
         return ext;
       },
+    );
+
+    // FSMComponent
+    this.register<FSMComponent>(
+      'FSMComponent',
+      FSMComponent,
+      (c) => c.toJSON() as unknown as Record<string, unknown>,
+      (d) => FSMComponent.fromJSON(d as any),
+    );
+
+    // QuestsComponent
+    this.register<QuestsComponent>(
+      'QuestsComponent',
+      QuestsComponent,
+      (c) => c.toJSON() as unknown as Record<string, unknown>,
+      (d) => QuestsComponent.fromJSON(d as any),
     );
   }
 }

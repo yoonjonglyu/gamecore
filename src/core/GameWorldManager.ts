@@ -18,6 +18,8 @@ import { ProgressionSystem } from '../systems/ProgressionSystem';
 import { LootSystem } from '../systems/LootSystem';
 import { MovementSystem } from '../spatial/MovementSystem';
 import { TurnSystem } from '../systems/TurnSystem';
+import { FSMSystem } from '../systems/FSMSystem';
+import { QuestSystem } from '../systems/QuestSystem';
 import { CombatRoundingConfig } from '../math/RoundingPolicy';
 
 export interface GameWorldManagerOptions<Events extends EventMap = CoreEvents> {
@@ -49,6 +51,8 @@ export class GameWorldManager<Events extends EventMap = CoreEvents> {
   lootSystem?: LootSystem;
   movementSystem?: MovementSystem;
   turnSystem?: TurnSystem;
+  fsmSystem?: FSMSystem;
+  questSystem?: QuestSystem;
 
   constructor(options: GameWorldManagerOptions<Events> = {}) {
     const bus = options.bus ?? new EventBus<Events>();
@@ -83,6 +87,8 @@ export class GameWorldManager<Events extends EventMap = CoreEvents> {
     this.equipmentSystem = new EquipmentSystem();
     this.movementSystem = new MovementSystem();
     this.turnSystem = new TurnSystem();
+    this.fsmSystem = new FSMSystem();
+    this.questSystem = new QuestSystem(this.world as any);
 
     this.skillSystem = new SkillSystem(undefined, this.statModSystem);
     this.combatSystem = new CombatSystem({
@@ -93,6 +99,7 @@ export class GameWorldManager<Events extends EventMap = CoreEvents> {
     // 시스템 우선순위 설정
     // 높은 우선순위가 먼저 실행됨
     this.turnSystem.priority = 100;
+    this.fsmSystem.priority = 95;
     this.statusEffectSystem.priority = 90;
     this.statModSystem.priority = 85;
     this.skillSystem.priority = 70;
@@ -104,6 +111,7 @@ export class GameWorldManager<Events extends EventMap = CoreEvents> {
 
     this.world
       .addSystem(this.turnSystem as unknown as System<Events>)
+      .addSystem(this.fsmSystem as unknown as System<Events>)
       .addSystem(this.statusEffectSystem as unknown as System<Events>)
       .addSystem(this.statModSystem as unknown as System<Events>)
       .addSystem(this.skillSystem as unknown as System<Events>)
@@ -127,6 +135,7 @@ export class GameWorldManager<Events extends EventMap = CoreEvents> {
    * 관리자 및 월드 리소스 파괴
    */
   destroy(): void {
+    this.questSystem?.destroy();
     this.world.destroy();
   }
 }

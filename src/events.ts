@@ -147,4 +147,35 @@ export interface CoreEvents {
     targetY: number;
     reason: 'out_of_bounds' | 'tile_blocked' | 'entity_blocked' | string;
   };
+
+  // ─── 전역 블랙보드 (Blackboard) ────────────────
+  'blackboard:changed': { key: string; prev: any; next: any };
+
+  // ─── 유한 상태 머신 (FSM) ─────────────────────
+  'fsm:state:changed': { entityId: number; prev: string; next: string };
+
+  // ─── 퀘스트 및 업적 (Quests) ───────────────────
+  'quest:progress': {
+    entityId: number;
+    questId: string;
+    objectiveId: string;
+    current: number;
+    target: number;
+    completed: boolean;
+  };
+  'quest:completed': {
+    entityId: number;
+    questId: string;
+    rewards?: any;
+  };
+  'quest:rewarded': {
+    entityId: number;
+    questId: string;
+    rewards?: any;
+  };
+
+  // ─── 시각/음향 연출 프로토콜 (Cue) ────────────
+  'cue:triggered': {
+    cue: import('./combat/CueProtocol').CueEvent;
+  };
 }
