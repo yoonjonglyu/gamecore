@@ -8,7 +8,7 @@
 
 // ─── Core ECS ─────────────────────────────────
 export { World } from './core/World';
-export type { WorldListener, WorldChangeEvent, WorldOptions } from './core/World';
+export type { WorldListener, WorldChangeEvent, WorldOptions, QueryCacheMode } from './core/World';
 export { Entity } from './core/Entity';
 export type { EntityListener, EntityChange, EntityChangeType, EntityWorldEmitter } from './core/Entity';
 export { Component } from './core/Component';
@@ -68,6 +68,7 @@ export type {
 
 // ─── Stat Pipeline Engine ─────────────────────
 export { StatPipeline } from './stats/StatPipeline';
+export { StatAdapter } from './stats/StatAdapter';
 export type {
   StatReader,
   StatFormula,
@@ -145,6 +146,8 @@ export type { Tile } from './spatial/GridMap';
 export { MovementSystem } from './spatial/MovementSystem';
 export type { MoveRequest } from './spatial/MovementSystem';
 export { SpatialHashGrid } from './spatial/SpatialHashGrid';
+export { SpatialGridSystem } from './spatial/SpatialGridSystem';
+export type { SpatialGridSystemOptions } from './spatial/SpatialGridSystem';
 
 // ─── Skills ───────────────────────────────────
 export type {

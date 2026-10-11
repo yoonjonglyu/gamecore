@@ -12,12 +12,20 @@ import { SeededRandom } from '../math/SeededRandom';
 import { Blackboard } from './Blackboard';
 import { TimerScheduler, ScheduledTask } from './TimerScheduler';
 
+export type QueryCacheMode = 'auto' | 'always';
+
 export interface WorldOptions<Events extends EventMap = EventMap> {
   bus?: EventBus<Events>;
   seed?: number | string;
   random?: SeededRandom;
   blackboard?: Blackboard;
   scheduler?: TimerScheduler;
+  /** 쿼리 캐시 갱신 전략 ('auto': dirty 시에만 재빌드, 'always': 매 틱 전체 풀스캔 재빌드). 기본값: 'auto' */
+  queryCacheMode?: QueryCacheMode;
+  /** 시간 배속 (기본값: 1.0) */
+  timeScale?: number;
+  /** 일시정지 여부 (기본값: false) */
+  isPaused?: boolean;
 }
 
 export class World<Events extends EventMap = EventMap> implements EntityWorldEmitter {
@@ -29,6 +37,13 @@ export class World<Events extends EventMap = EventMap> implements EntityWorldEmi
   /** 시간 및 턴 기반 지연/반복 스케줄러 */
   readonly scheduler: TimerScheduler;
 
+  /** 쿼리 캐시 갱신 전략 */
+  queryCacheMode: QueryCacheMode = 'auto';
+  /** 시간 배속 (배속 연산, 슬로우모션 등) */
+  timeScale: number = 1.0;
+  /** 일시정지 여부 */
+  isPaused: boolean = false;
+
   /** bus의 편의 별칭 */
   get events(): EventBus<Events> {
     return this.bus;
@@ -38,6 +53,8 @@ export class World<Events extends EventMap = EventMap> implements EntityWorldEmi
   private _systems: System<Events>[] = [];
   /** System이 처리할 entity 캐시 (query → entities) */
   private _queryCache: Map<System<Events>, Entity[]> = new Map();
+  /** 쿼리 캐시 갱신 필요 여부 플래그 */
+  private _isCacheDirty: boolean = true;
   /** 다음 틱에 삭제될 entity ID 목록 (지연 삭제) */
   private _pendingRemove: Set<number> = new Set();
 
@@ -62,6 +79,9 @@ export class World<Events extends EventMap = EventMap> implements EntityWorldEmi
       this.random = opts.random ?? new SeededRandom(opts.seed ?? seed ?? Date.now());
       this.blackboard = opts.blackboard ?? new Blackboard();
       this.scheduler = opts.scheduler ?? new TimerScheduler();
+      if (opts.queryCacheMode) this.queryCacheMode = opts.queryCacheMode;
+      if (opts.timeScale !== undefined) this.timeScale = opts.timeScale;
+      if (opts.isPaused !== undefined) this.isPaused = opts.isPaused;
     } else {
       this.bus = new EventBus<Events>();
       this.random = new SeededRandom(seed ?? Date.now());
@@ -73,6 +93,54 @@ export class World<Events extends EventMap = EventMap> implements EntityWorldEmi
     this.blackboard.subscribe((key, prev, next) => {
       (this.bus as any).emit('blackboard:changed', { key, prev, next });
     });
+  }
+
+  // ──────────────────────────────────────────────
+  // Time Scaling & Pause Controls
+  // ──────────────────────────────────────────────
+
+  /**
+   * 게임 월드의 시간 진행 배속을 설정합니다 (예: 1.0 = 정상, 2.0 = 2배속, 0.5 = 슬로우모션).
+   */
+  setTimeScale(scale: number): this {
+    this.timeScale = Math.max(0, scale);
+    return this;
+  }
+
+  /**
+   * 게임 월드의 일시정지 상태를 설정합니다.
+   */
+  setPaused(paused: boolean): this {
+    this.isPaused = paused;
+    return this;
+  }
+
+  /**
+   * 게임 월드를 일시정지합니다.
+   */
+  pause(): this {
+    return this.setPaused(true);
+  }
+
+  /**
+   * 게임 월드의 일시정지를 해제하고 재개합니다.
+   */
+  resume(): this {
+    return this.setPaused(false);
+  }
+
+  // ──────────────────────────────────────────────
+  // Query Cache Invalidation
+  // ──────────────────────────────────────────────
+
+  /**
+   * 시스템 쿼리 캐시를 무효화하여 다음 틱 또는 필요 시 재빌드하도록 표시합니다.
+   */
+  invalidateCache(): void {
+    this._isCacheDirty = true;
+    if (this.queryCacheMode === 'always') {
+      this._rebuildQueryCache();
+    }
   }
 
   // ──────────────────────────────────────────────
@@ -152,6 +220,7 @@ export class World<Events extends EventMap = EventMap> implements EntityWorldEmi
   }
 
   emitComponentUpdated(entityId: number, componentName: string, component: Component): void {
+    this._isCacheDirty = true;
     if (this._isBatching) {
       const key = `${entityId}:${componentName}`;
       this._batchedComponentRemovals.delete(key);
@@ -162,6 +231,7 @@ export class World<Events extends EventMap = EventMap> implements EntityWorldEmi
   }
 
   emitComponentRemoved(entityId: number, componentName: string): void {
+    this._isCacheDirty = true;
     if (this._isBatching) {
       const key = `${entityId}:${componentName}`;
       this._batchedComponentUpdates.delete(key);
@@ -191,7 +261,7 @@ export class World<Events extends EventMap = EventMap> implements EntityWorldEmi
     const entity = new Entity(tags);
     entity._bindWorld(this);
     this._entities.set(entity.id, entity);
-    this._invalidateCache();
+    this.invalidateCache();
     this.notifyChange({ type: 'entity_created', entity });
     return entity;
   }
@@ -211,7 +281,7 @@ export class World<Events extends EventMap = EventMap> implements EntityWorldEmi
     }
     this._entities.clear();
     this._pendingRemove.clear();
-    this._invalidateCache();
+    this.invalidateCache();
     this.notifyChange({ type: 'entities_cleared' });
   }
 
@@ -305,18 +375,28 @@ export class World<Events extends EventMap = EventMap> implements EntityWorldEmi
    * @param mode 실행 모드 ('realtime' | 'turn')
    */
   update(delta: number, mode: 'turn' | 'realtime' = 'realtime'): void {
+    if (this.isPaused) {
+      return;
+    }
+
+    const effectiveDelta = mode === 'realtime' ? delta * this.timeScale : delta;
+
     // 스케줄러 틱 실행 (시간 또는 턴)
-    this.scheduler.update(delta, mode === 'turn' ? 'turn' : 'time');
+    this.scheduler.update(effectiveDelta, mode === 'turn' ? 'turn' : 'time');
 
     // 지연 삭제 처리
     this._flushRemovals();
-    // 컴포넌트 추가/제거 후 캐시가 stale해질 수 있으므로 매 틱 재빌드
-    this._invalidateCache();
+
+    // 쿼리 캐시 갱신 (always 모드이거나 dirty 플래그 활성화 시)
+    if (this.queryCacheMode === 'always' || this._isCacheDirty) {
+      this._rebuildQueryCache();
+      this._isCacheDirty = false;
+    }
 
     for (const system of this._systems) {
       if (!system.enabled) continue; // 일시정지된 시스템 스킵
       const entities = this._queryCache.get(system) ?? [];
-      system.update(entities, delta, mode);
+      system.update(entities, effectiveDelta, mode);
     }
   }
 
@@ -339,7 +419,7 @@ export class World<Events extends EventMap = EventMap> implements EntityWorldEmi
     return [...this._entities.values()].filter((e) => e.hasAll(system.query));
   }
 
-  private _invalidateCache(): void {
+  private _rebuildQueryCache(): void {
     for (const system of this._systems) {
       this._queryCache.set(system, this._buildQuery(system));
     }
@@ -355,7 +435,7 @@ export class World<Events extends EventMap = EventMap> implements EntityWorldEmi
       }
     }
     this._pendingRemove.clear();
-    this._invalidateCache();
+    this.invalidateCache();
   }
 }
 

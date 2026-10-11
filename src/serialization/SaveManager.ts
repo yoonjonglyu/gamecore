@@ -78,8 +78,9 @@ export class SaveManager {
     world: World<any>,
     secretKey?: string,
     version: number = SaveManager.currentVersion,
+    options?: import('./WorldSerializer').SerializeOptions,
   ): string {
-    const rawData = SaveManager._serializer.serialize(world);
+    const rawData = SaveManager._serializer.serialize(world, options);
     const dataStr = JSON.stringify(rawData);
 
     const checksum = secretKey

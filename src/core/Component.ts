@@ -9,4 +9,6 @@ export type ComponentType<T extends Component = Component> = new (...args: any[]
 export abstract class Component {
   /** 이 컴포넌트가 속한 Entity의 ID (World가 할당) */
   entityId: number = -1;
+  /** 이 컴포넌트가 속한 Entity 인스턴스 참조 (Entity.add 시 자동 연결) */
+  entity?: any;
 }

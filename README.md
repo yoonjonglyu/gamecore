@@ -115,5 +115,81 @@ manager.update(16); // 16ms 틱
 
 ---
 
+## 🌟 v1.1.0 신규 업데이트 및 개선점
+
+### 1. 세이브 데이터 PRNG 상태 선택적 직렬화 (`includePrngState`)
+완전한 난수 시뮬레이션 재현이 필요한 경우 세이브 파일에 PCG32 내부 상태(`state`, `inc`)를 저장하고, 기존 세이브와의 호환성을 유지하거나 파일 용량을 아끼려는 경우 생략할 수 있습니다.
+```ts
+// PRNG 상태를 포함하여 직렬화 (완전 재현)
+const saveJson = manager.save({ includePrngState: true });
+
+// 복원 시 자동으로 난수 상태까지 완벽 복원
+const newManager = new GameWorldManager();
+newManager.load(saveJson);
+```
+
+### 2. 증분 dirty 쿼리 캐싱 & 기존 전체 스캔 선택 모드 (`queryCacheMode`)
+매 프레임 엔티티 목록을 풀스캔하던 방식에서, 컴포넌트 추가/제거 시에만 캐시를 dirty 처리하는 고성능 증분 캐싱을 기본 탑재했습니다. 기존 전체 스캔 동작을 원할 경우 `always` 모드로 지정할 수 있습니다.
+```ts
+// 기본값: 컴포넌트 변경 시에만 재계산 ('auto')
+world.queryCacheMode = 'auto';
+
+// 기존 호환 모드: 매 틱 전체 재계산 ('always')
+world.queryCacheMode = 'always';
+
+// 수동 캐시 무효화가 필요한 경우 언제든 호출 가능
+world.invalidateCache();
+```
+
+### 3. PositionComponent ↔ SpatialHashGrid 자동 동기화 시스템 (`SpatialGridSystem`)
+엔티티의 `PositionComponent` 좌표가 이동할 때마다 수동으로 공간 해시를 업데이트할 필요 없이, 시스템 틱마다 위치 변경을 감지하여 자동으로 그리드를 동기화합니다.
+```ts
+import { SpatialGridSystem, PositionComponent } from 'ryuis-gamecore';
+
+const spatialSys = new SpatialGridSystem();
+world.addSystem(spatialSys);
+
+const mob = world.createEntity();
+mob.add(new PositionComponent(10, 20));
+
+world.update(16);
+
+// 반경 검색 (SpatialHashGrid 직접 래핑)
+const nearby = spatialSys.queryRadius(10, 20, 15);
+```
+
+### 4. 게임 루프 시간 배속 및 일시정지 제어 (`timeScale`, `isPaused`)
+월드 단위로 시간 배속(슬로우 모션, 2배속 등) 및 일시정지/재개를 즉시 제어할 수 있습니다.
+```ts
+world.timeScale = 2.0; // 2배속 재생
+world.pause();         // 일시정지 (update 호출되어도 시스템 로직 정지)
+world.resume();        // 재개
+```
+
+### 5. FSMComponent 상태 전이 리스너 & 이벤트 보장
+`fsm.transitionTo(state)` 수동 호출 시에도 `worldBus.emit('fsm:state:changed')` 이벤트가 100% 자동 발행되며, 컴포넌트 단위 `onTransition` 리스너를 등록할 수 있습니다.
+```ts
+fsm.onTransition((from, to) => {
+  console.log(`상태 전이: ${from} -> ${to}`);
+});
+```
+
+### 6. StatsComponent ↔ ExtendedStatsComponent 어댑터 (`StatAdapter`)
+경량 고정 스탯 컴포넌트와 4단계 연산 파이프라인 확장 스탯 간의 상호 변환 및 수치 동기화를 간편하게 지원합니다.
+```ts
+import { StatAdapter, StatsComponent } from 'ryuis-gamecore';
+
+const basicStats = new StatsComponent({ hp: 100, maxHp: 100, attack: 20 });
+const extended = StatAdapter.toExtended(basicStats);
+
+// 4단계 파이프라인에서 버프 적용 후 다시 경량 스탯으로 동기화
+extended.addModifier({ stat: 'attack', stage: 'amplification', value: 1.5, sourceId: 'buff' });
+StatAdapter.syncToStats(extended, basicStats);
+console.log(basicStats.attack); // 30
+```
+
+---
+
 ## 📄 라이선스
 ISC License © ISA (류윤종)
+

@@ -71,10 +71,10 @@ export class ComponentRegistry {
       return { type: name, data: customSerializer(comp) };
     }
 
-    // 기본 직렬화: public 필드 복사
+    // 기본 직렬화: public 필드 복사 (entity, entityId, 프라이빗, 함수 제외)
     const data: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(comp)) {
-      if (k.startsWith('_') || typeof v === 'function') continue;
+      if (k === 'entity' || k === 'entityId' || k.startsWith('_') || typeof v === 'function') continue;
       data[k] = v;
     }
 

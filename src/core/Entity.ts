@@ -31,6 +31,11 @@ export class Entity {
     return this;
   }
 
+  /** 소속 World 인스턴스 (바인딩되어 있는 경우) */
+  get world(): any {
+    return this._worldEmitter;
+  }
+
   // ──────────────────────────────────────────────
   // Observer / Subscription
   // ──────────────────────────────────────────────
@@ -99,6 +104,7 @@ export class Entity {
 
   add<T extends Component>(component: T): this {
     component.entityId = this.id;
+    component.entity = this;
     const type = component.constructor as ComponentType;
     this._components.set(type, component);
     this.notifyChange({ type: 'component_added', componentType: type, component });
@@ -118,6 +124,10 @@ export class Entity {
     const comp = this._components.get(type);
     const deleted = this._components.delete(type);
     if (deleted) {
+      if (comp) {
+        comp.entityId = -1;
+        comp.entity = undefined;
+      }
       this.notifyChange({ type: 'component_removed', componentType: type, component: comp });
       this._worldEmitter?.emitComponentRemoved(this.id, type.name);
     }

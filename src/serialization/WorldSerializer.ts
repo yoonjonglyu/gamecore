@@ -7,6 +7,7 @@
 import { World } from '../core/World';
 import { Entity } from '../core/Entity';
 import { ComponentRegistry, defaultComponentRegistry } from './ComponentRegistry';
+import type { PRNGState } from '../math/SeededRandom';
 
 export interface SerializedComponent {
   type: string;
@@ -24,11 +25,14 @@ export interface SerializedWorld {
   timestamp: number;
   entities: SerializedEntity[];
   blackboard?: Record<string, any>;
+  prngState?: PRNGState;
 }
 
 export interface SerializeOptions {
   /** 특정 엔티티만 저장하고 싶을 때 (예: player만 세이브) */
   filterEntity?: (entity: Entity) => boolean;
+  /** 결정론적 PRNG 난수 상태를 포함할지 여부 (기본: false, 선택적 활성화) */
+  includePrngState?: boolean;
 }
 
 export interface DeserializeOptions {
@@ -75,6 +79,7 @@ export class WorldSerializer {
       timestamp: Date.now(),
       entities: serializedEntities,
       blackboard: world.blackboard ? world.blackboard.toJSON() : undefined,
+      prngState: (options?.includePrngState && world.random) ? world.random.exportState() : undefined,
     };
   }
 
@@ -105,6 +110,10 @@ export class WorldSerializer {
 
     if (parsed.blackboard && targetWorld.blackboard) {
       targetWorld.blackboard.fromJSON(parsed.blackboard);
+    }
+
+    if (parsed.prngState && targetWorld.random) {
+      targetWorld.random.importState(parsed.prngState);
     }
 
     const createdEntities: Entity[] = [];

@@ -9,7 +9,7 @@ description: >-
   and audio/VFX cue protocols), or integrating with React/Canvas/Node.js/Godot/Wasm.
 ---
 
-# GameCore Framework Skill (v1.0.0)
+# GameCore Framework Skill (v1.1.0)
 
 This skill guides the design, implementation, and extension of games built on the **GameCore** framework (`ryuis-gamecore` package).
 
@@ -124,3 +124,41 @@ cues.emit('combat:hit', {
 // 렌더러 루프에서 소비
 const frameCues = cues.flush();
 ```
+
+### F. 공간 해시 자동 동기화 (SpatialGridSystem)
+```ts
+import { SpatialGridSystem, PositionComponent } from 'ryuis-gamecore';
+
+// 엔티티의 PositionComponent 좌표를 프레임마다 SpatialHashGrid에 자동 반영
+const spatialSys = new SpatialGridSystem();
+world.addSystem(spatialSys);
+
+const nearby = spatialSys.queryRadius(heroPos.x, heroPos.y, 75);
+```
+
+### G. 스탯 변환 & 동기화 (StatAdapter)
+```ts
+import { StatAdapter, StatsComponent } from 'ryuis-gamecore';
+
+// 경량 스탯을 4단계 파이프라인으로 전환
+const extended = StatAdapter.toExtended(entity.get(StatsComponent)!);
+extended.addModifier({ stat: 'attack', stage: 'flat', value: 10, sourceId: 'buff' });
+
+// 다시 경량 스탯으로 반영
+StatAdapter.syncToStats(extended, entity.get(StatsComponent)!);
+```
+
+### H. 시간 배속 & 일시정지 (TimeScale)
+```ts
+world.timeScale = 1.5; // 1.5배속
+world.pause();         // 게임 일시정지
+world.resume();        // 게임 재개
+```
+
+### I. PRNG 상태 선택적 직렬화
+```ts
+// 결정론적 리플레이가 필요할 때 PRNG 상태 포함
+const saveJson = manager.save({ includePrngState: true });
+manager.load(saveJson);
+```
+

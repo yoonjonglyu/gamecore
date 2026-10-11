@@ -17,6 +17,7 @@ import { EquipmentSystem } from '../systems/EquipmentSystem';
 import { ProgressionSystem } from '../systems/ProgressionSystem';
 import { LootSystem } from '../systems/LootSystem';
 import { MovementSystem } from '../spatial/MovementSystem';
+import { SpatialGridSystem } from '../spatial/SpatialGridSystem';
 import { TurnSystem } from '../systems/TurnSystem';
 import { FSMSystem } from '../systems/FSMSystem';
 import { QuestSystem } from '../systems/QuestSystem';
@@ -53,6 +54,7 @@ export class GameWorldManager<Events extends EventMap = CoreEvents> {
   turnSystem?: TurnSystem;
   fsmSystem?: FSMSystem;
   questSystem?: QuestSystem;
+  spatialGridSystem?: SpatialGridSystem;
 
   constructor(options: GameWorldManagerOptions<Events> = {}) {
     const bus = options.bus ?? new EventBus<Events>();
@@ -86,6 +88,7 @@ export class GameWorldManager<Events extends EventMap = CoreEvents> {
     this.lootSystem = new LootSystem(this.progressionSystem);
     this.equipmentSystem = new EquipmentSystem();
     this.movementSystem = new MovementSystem();
+    this.spatialGridSystem = new SpatialGridSystem();
     this.turnSystem = new TurnSystem();
     this.fsmSystem = new FSMSystem();
     this.questSystem = new QuestSystem(this.world as any);
@@ -108,6 +111,7 @@ export class GameWorldManager<Events extends EventMap = CoreEvents> {
     this.lootSystem.priority = 40;
     this.progressionSystem.priority = 30;
     this.movementSystem.priority = 20;
+    this.spatialGridSystem.priority = 15;
 
     this.world
       .addSystem(this.turnSystem as unknown as System<Events>)
@@ -119,7 +123,8 @@ export class GameWorldManager<Events extends EventMap = CoreEvents> {
       .addSystem(this.equipmentSystem as unknown as System<Events>)
       .addSystem(this.lootSystem as unknown as System<Events>)
       .addSystem(this.progressionSystem as unknown as System<Events>)
-      .addSystem(this.movementSystem as unknown as System<Events>);
+      .addSystem(this.movementSystem as unknown as System<Events>)
+      .addSystem(this.spatialGridSystem as unknown as System<Events>);
   }
 
   /**

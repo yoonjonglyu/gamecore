@@ -109,8 +109,22 @@ export class FSMComponent extends Component {
     return this.currentConfig?.canAttack ?? true;
   }
 
+  private _listeners: Array<(prev: string, next: string) => void> = [];
+
+  /**
+   * 상태 전이 이벤트를 구독합니다.
+   * @returns 구독 해제 함수
+   */
+  onTransition(listener: (prev: string, next: string) => void): () => void {
+    this._listeners.push(listener);
+    return () => {
+      this._listeners = this._listeners.filter((l) => l !== listener);
+    };
+  }
+
   /**
    * 상태 전이를 시도한다. 전이 규칙을 검증하며, force가 true이면 강제 전이한다.
+   * 전이 성공 시 등록된 리스너 호출 및 월드 이벤트('fsm:state:changed')를 발행한다.
    * @returns 전이 성공 여부
    */
   transitionTo(nextState: string, force: boolean = false): boolean {
@@ -128,9 +142,27 @@ export class FSMComponent extends Component {
       }
     }
 
-    this._previousState = this._currentState;
+    const prev = this._currentState;
+    this._previousState = prev;
     this._currentState = nextState;
     this._stateTimer = 0;
+
+    // 리스너 호출
+    for (const listener of this._listeners) {
+      listener(prev, nextState);
+    }
+
+    // 엔티티가 월드에 바인딩되어 있으면 월드 버스로 이벤트 전파
+    const entity = (this as any).entity;
+    const worldBus = entity?.world?.bus;
+    if (worldBus && typeof worldBus.emit === 'function') {
+      worldBus.emit('fsm:state:changed', {
+        entityId: this.entityId >= 0 ? this.entityId : entity.id,
+        prev,
+        next: nextState,
+      });
+    }
+
     return true;
   }
 
