@@ -18,6 +18,7 @@ import { BarrierComponent } from '../components/BarrierComponent';
 import { ExtendedStatsComponent } from '../components/ExtendedStatsComponent';
 import { FSMComponent } from '../components/FSMComponent';
 import { QuestsComponent } from '../components/QuestsComponent';
+import { HierarchyComponent } from '../components/HierarchyComponent';
 
 
 export type ComponentSerializer<T extends Component = Component> = (component: T) => Record<string, unknown>;
@@ -239,6 +240,25 @@ export class ComponentRegistry {
       QuestsComponent,
       (c) => c.toJSON() as unknown as Record<string, unknown>,
       (d) => QuestsComponent.fromJSON(d as any),
+    );
+
+    // HierarchyComponent
+    this.register<HierarchyComponent>(
+      'HierarchyComponent',
+      HierarchyComponent,
+      (c) => ({
+        parentId: c.parentId,
+        offsetX: c.offsetX,
+        offsetY: c.offsetY,
+        cascadeDestroy: c.cascadeDestroy,
+      }),
+      (d) =>
+        new HierarchyComponent({
+          parentId: d.parentId as number | undefined,
+          offsetX: d.offsetX as number | undefined,
+          offsetY: d.offsetY as number | undefined,
+          cascadeDestroy: d.cascadeDestroy as boolean | undefined,
+        }),
     );
   }
 }

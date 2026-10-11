@@ -100,6 +100,18 @@ export interface CoreEvents {
   };
   'status:removed': { entityId: number; statusId: string };
   'status:expired': { entityId: number; statusId: string };
+  'status:stack:decayed': {
+    entityId: number;
+    statusId: string;
+    remainingStacks: number;
+  };
+  'status:reaction': {
+    entityId: number;
+    reactionName: string;
+    consumedStatuses: string[];
+    resultStatusId?: string;
+    damage?: number;
+  };
   'status:tick:damage': {
     entityId: number;
     statusId: string;

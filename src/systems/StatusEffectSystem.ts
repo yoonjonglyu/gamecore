@@ -11,19 +11,30 @@ import { ComponentType } from '../core/Component';
 import { Entity } from '../core/Entity';
 import { System } from '../core/System';
 import { CoreEvents } from '../events';
-import { StatusEffectsComponent, StatusInstance } from '../components/StatusEffectsComponent';
+import { StatusEffectsComponent, StatusInstance, StackBehavior } from '../components/StatusEffectsComponent';
 import { StatsComponent } from '../components/StatsComponent';
 import { ExtendedStatsComponent } from '../components/ExtendedStatsComponent';
 import { StatModsComponent, StatModifier } from '../components/StatModsComponent';
+import { StatusReactionRegistry, StatusReactionRule } from '../status/StatusReactionEngine';
 
 export interface ApplyStatusOptions {
   tickInterval?: number;
   tickDamage?: number;
   linkedModifiers?: StatModifier[];
+  stackBehavior?: StackBehavior;
 }
 
 export class StatusEffectSystem extends System<CoreEvents> {
   readonly query: ComponentType[] = [StatusEffectsComponent];
+  readonly reactionRegistry: StatusReactionRegistry = new StatusReactionRegistry();
+
+  /**
+   * 반응 규칙을 간편하게 등록하는 헬퍼
+   */
+  registerReaction(rule: StatusReactionRule): this {
+    this.reactionRegistry.register(rule);
+    return this;
+  }
 
   /**
    * 외부에서 상태이상을 안전하게 부여한다.
@@ -43,6 +54,72 @@ export class StatusEffectSystem extends System<CoreEvents> {
     if (!statusComp) {
       statusComp = new StatusEffectsComponent();
       entity.add(statusComp);
+    }
+
+    // ── 원소/상태 상호작용 (Elemental / Status Reaction) 검사 ──
+    const existingIds = statusComp.all.map((s) => s.id);
+    const matched = this.reactionRegistry.findMatchingRule(statusId, existingIds);
+
+    if (matched) {
+      const { rule, existingStatusId } = matched;
+      const consumeMode = rule.consume ?? 'both';
+      const existingInst = statusComp.get(existingStatusId)!;
+
+      const consumedStatuses: string[] = [];
+      if (consumeMode === 'both' || consumeMode === 'primary') {
+        this.removeStatus(entity, existingStatusId);
+        consumedStatuses.push(existingStatusId);
+      }
+      if (consumeMode === 'both' || consumeMode === 'secondary') {
+        consumedStatuses.push(statusId);
+      }
+
+      // 반응 보너스 피해
+      if (rule.bonusDamage && rule.bonusDamage > 0) {
+        this._applyDirectDamage(entity, rule.bonusDamage, sourceEntityId);
+      }
+
+      // 커스텀 반응 콜백
+      if (rule.onReaction) {
+        const dummyNewInst: StatusInstance = {
+          id: statusId,
+          remainingDuration: duration,
+          stacks,
+          maxStacks,
+          sourceEntityId,
+        };
+        rule.onReaction(entity, dummyNewInst, existingInst, {
+          bus: this.bus,
+        });
+      }
+
+      // 반응 결과 신규 상태 부여 (예: wet + freeze -> frozen)
+      let appliedResultId: string | undefined;
+      if (rule.resultStatus) {
+        appliedResultId = rule.resultStatus.id;
+        this.applyStatus(
+          entity,
+          rule.resultStatus.id,
+          rule.resultStatus.duration,
+          sourceEntityId,
+          rule.resultStatus.stacks ?? 1,
+          rule.resultStatus.maxStacks ?? 1,
+          { tickDamage: rule.resultStatus.tickDamage },
+        );
+      }
+
+      this.bus.emit('status:reaction', {
+        entityId: entity.id,
+        reactionName: rule.name,
+        consumedStatuses,
+        resultStatusId: appliedResultId,
+        damage: rule.bonusDamage,
+      });
+
+      // 만약 새로 들어온 상태가 소모(consume) 대상이라면 추가 등록 스킵
+      if (consumeMode === 'both' || consumeMode === 'secondary') {
+        return;
+      }
     }
 
     const linkedSourceIds: string[] = [];
@@ -80,6 +157,7 @@ export class StatusEffectSystem extends System<CoreEvents> {
       tickInterval: options?.tickInterval,
       tickDamage: options?.tickDamage,
       linkedModSourceIds: linkedSourceIds.length > 0 ? linkedSourceIds : undefined,
+      stackBehavior: options?.stackBehavior,
     });
 
     const inst = statusComp.get(statusId)!;
@@ -90,6 +168,42 @@ export class StatusEffectSystem extends System<CoreEvents> {
       stacks: inst.stacks,
       sourceEntityId,
     });
+  }
+
+  /**
+   * 직접 피해를 적용하는 내부 헬퍼 (반응 보너스 피해 등에 사용)
+   */
+  private _applyDirectDamage(entity: Entity, damage: number, sourceEntityId?: number): void {
+    const stats = entity.get(StatsComponent);
+    const extStats = entity.get(ExtendedStatsComponent);
+
+    let prevHp = 0;
+    let nextHp = 0;
+
+    if (stats) {
+      if (stats.isDead) return;
+      prevHp = stats.hp;
+      stats.hp = Math.max(0, stats.hp - damage);
+      nextHp = stats.hp;
+    } else if (extStats) {
+      if (extStats.isDead) return;
+      prevHp = extStats.hp;
+      const res = extStats.modifyResource('hp', -damage, 'maxHp');
+      nextHp = res.next;
+    } else {
+      return;
+    }
+
+    this.bus.emit('stats:hp:changed', {
+      entityId: entity.id,
+      prev: prevHp,
+      next: nextHp,
+      delta: -damage,
+    });
+
+    if (nextHp <= 0) {
+      this.bus.emit('stats:died', { entityId: entity.id });
+    }
   }
 
   /**
@@ -132,15 +246,26 @@ export class StatusEffectSystem extends System<CoreEvents> {
       // ── 2. 지속시간 차감 ────────────────────────────
       inst.remainingDuration -= delta;
 
-      // ── 3. 만료 체크 및 롤백 클린업 ─────────────────
+      // ── 3. 만료 체크 및 스택 decay 또는 롤백 클린업 ──
       if (inst.remainingDuration <= 0) {
-        this._rollbackLinkedMods(entity, inst);
-        statusComp.remove(inst.id);
+        if (inst.stackBehavior === 'decay' && inst.stacks > 1) {
+          inst.stacks -= 1;
+          inst.remainingDuration = inst.initialDuration ?? 1000;
 
-        this.bus.emit('status:expired', {
-          entityId: entity.id,
-          statusId: inst.id,
-        });
+          this.bus.emit('status:stack:decayed', {
+            entityId: entity.id,
+            statusId: inst.id,
+            remainingStacks: inst.stacks,
+          });
+        } else {
+          this._rollbackLinkedMods(entity, inst);
+          statusComp.remove(inst.id);
+
+          this.bus.emit('status:expired', {
+            entityId: entity.id,
+            statusId: inst.id,
+          });
+        }
       }
     }
   }

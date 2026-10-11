@@ -19,12 +19,18 @@ export class PositionComponent extends Component {
   mapId?: string;
   isBlocked: boolean;
 
-  constructor(props: PositionProps = {}) {
+  constructor(xOrProps?: number | PositionProps, y?: number) {
     super();
-    this.x = props.x ?? 0;
-    this.y = props.y ?? 0;
-    this.mapId = props.mapId;
-    this.isBlocked = props.isBlocked ?? true;
+    if (typeof xOrProps === 'number') {
+      this.x = xOrProps;
+      this.y = y ?? 0;
+      this.isBlocked = true;
+    } else {
+      this.x = xOrProps?.x ?? 0;
+      this.y = xOrProps?.y ?? 0;
+      this.mapId = xOrProps?.mapId;
+      this.isBlocked = xOrProps?.isBlocked ?? true;
+    }
   }
 
   set(x: number, y: number): void {

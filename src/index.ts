@@ -143,13 +143,15 @@ export { PositionComponent } from './spatial/PositionComponent';
 export type { PositionProps } from './spatial/PositionComponent';
 export { GridMap } from './spatial/GridMap';
 export type { Tile } from './spatial/GridMap';
+export { GridPathfinder } from './spatial/GridPathfinding';
+export type { GridCoord, PathfindingOptions, PathResult, HeuristicType } from './spatial/GridPathfinding';
 export { MovementSystem } from './spatial/MovementSystem';
 export type { MoveRequest } from './spatial/MovementSystem';
 export { SpatialHashGrid } from './spatial/SpatialHashGrid';
 export { SpatialGridSystem } from './spatial/SpatialGridSystem';
 export type { SpatialGridSystemOptions } from './spatial/SpatialGridSystem';
 
-// ─── Skills ───────────────────────────────────
+// ─── Skills & Status ──────────────────────────
 export type {
   SkillDef,
   SkillEffectDef,
@@ -164,7 +166,48 @@ export type { SkillEffectContext, SkillEffectHandler } from './skills/SkillEffec
 export { SkillsComponent } from './components/SkillsComponent';
 export type { SkillSlot } from './components/SkillsComponent';
 export { StatusEffectsComponent } from './components/StatusEffectsComponent';
-export type { StatusInstance } from './components/StatusEffectsComponent';
+export type { StatusInstance, StackBehavior } from './components/StatusEffectsComponent';
+export { StatusReactionRegistry } from './status/StatusReactionEngine';
+export type { StatusReactionRule, StatusReactionResult, ReactionConsumeMode } from './status/StatusReactionEngine';
+
+// ─── Inventory ────────────────────────────────
+export type { ItemMeta, ItemMetaLookup, InventoryOptions } from './components/InventoryComponent';
+
+// ─── Spatial & FOV ───────────────────────────
+export { LineOfSight, FieldOfView } from './spatial/FieldOfView';
+export type { FOVOptions } from './spatial/FieldOfView';
+
+// ─── Idle & Simulation ────────────────────────
+export { OfflineProgressEngine } from './idle/OfflineProgressEngine';
+export type { OfflineCalculateOptions, OfflineProgressResult, StaminaRecoveryConfig, StageSimulationConfig, TimeUnit } from './idle/OfflineProgressEngine';
+
+// ─── Dialogue & Narrative ────────────────────
+export { DialogueSession } from './dialogue/DialogueTreeEngine';
+export type { DialogueNode, DialogueChoice, DialogueContext, DialogueTreeData } from './dialogue/DialogueTreeEngine';
+
+// ─── AI & Decision Trees ──────────────────────
+export {
+  BTNode,
+  SelectorNode,
+  SequenceNode,
+  InverterNode,
+  RepeatNode,
+  ConditionNode,
+  ActionNode,
+  BehaviorTreeRunner,
+} from './ai/BehaviorTree';
+export type { NodeStatus, BTContext, BTConditionFn, BTActionFn } from './ai/BehaviorTree';
+
+// ─── Gacha & Summoning ────────────────────────
+export { GachaEngine } from './gacha/GachaEngine';
+export type { GachaPoolConfig, GachaTierDef, GachaResultEntry, PityState } from './gacha/GachaEngine';
+
+// ─── Replay & Determinism ─────────────────────
+export { ReplayRecorder } from './replay/ReplayRecorder';
+export type { ReplayRecorderOptions } from './replay/ReplayRecorder';
+export { ReplayPlayer } from './replay/ReplayPlayer';
+export type { StepResult, PlayResult } from './replay/ReplayPlayer';
+export type { ReplayAction, ReplayCheckpoint, ReplayData } from './replay/types';
 
 // ─── Data & Procedural Generation ────────────
 export { Registry } from './data/Registry';
@@ -188,6 +231,11 @@ export type { EntityBlueprint, SpawnOptions, BlueprintItemEntry } from './factor
 export { EntityFactory } from './factory/EntityFactory';
 export type { CustomComponentHandler, FactoryContext } from './factory/EntityFactory';
 
+// ─── Hierarchy & Relations ────────────────────
+export { HierarchyComponent } from './components/HierarchyComponent';
+export type { HierarchyProps } from './components/HierarchyComponent';
+export { HierarchySystem } from './systems/HierarchySystem';
+
 // ─── Serialization & SaveManager ─────────────
 export { ComponentRegistry, defaultComponentRegistry } from './serialization/ComponentRegistry';
 export type { ComponentSerializer, ComponentDeserializer, ComponentRegistration } from './serialization/ComponentRegistry';
@@ -195,6 +243,8 @@ export { WorldSerializer, defaultWorldSerializer } from './serialization/WorldSe
 export type { SerializedWorld, SerializedEntity, SerializedComponent, SerializeOptions, DeserializeOptions } from './serialization/WorldSerializer';
 export { SaveManager } from './serialization/SaveManager';
 export type { SaveEnvelope, DeserializationResult, MigrationFunction, MigrationStep } from './serialization/SaveManager';
+export { WorldDiffer } from './serialization/WorldDiffer';
+export type { WorldDelta, ComponentPatch, ComponentRemovalPatch } from './serialization/WorldDiffer';
 export { sha256, hmacSha256 } from './serialization/crypto';
 
 // ─── Events ───────────────────────────────────

@@ -34,6 +34,14 @@ GameCore is a platform-agnostic, deterministic, 0-dependency, ECS (Entity-Compon
 13. **Declarative Stat Pipeline**: Use `StatPipeline` and `ExtendedStatsComponent` for arbitrary RPG attributes (STR, INT, CritRate, FireDamage, etc.) with 4-stage calculation order:
     $$\text{Final} = (\text{Base} + \sum \text{Flat}) \times (1 + \sum \text{Percent}) \times (1 + \sum \text{Amplification})$$
 14. **Pluggable Combat Pipeline**: Decouple damage formulas via `DamageCalculator` strategy pattern and 4-stage lifecycle middlewares (`onPreHit`, `onDamageCalculate`, `onShieldAbsorb`, `onPostHit`). Shield damage is absorbed by `BarrierComponent` before deducting HP.
+15. **Offline Progress Calculation**: Use `OfflineProgressEngine` for idle/AFK gains with cap limits and multi-resource simulation.
+16. **Branching Dialogue (DialogueSession)**: Graph-based dialogue with condition evaluation against `world.blackboard` and automatic side-effect triggers.
+17. **2D Grid FOV & LOS (FieldOfView)**: Raycasting field-of-view, line-of-sight checks, and shadowcasting fog-of-war for roguelikes/tactics.
+18. **Modular Behavior Trees**: Compose reactive AI agents using `BehaviorTree`, `SelectorNode`, `SequenceNode`, `ActionNode`, and `ConditionNode`.
+19. **Gacha & Pity Engine**: Deterministic gacha banner simulations with soft/hard pity counters and guaranteed banner rate-ups.
+20. **Delta Synchronization (WorldDiffer)**: Capture lightweight network delta snapshots (`added`, `updated`, `removed`, `blackboard`) for multiplayer replication and spectator syncing.
+21. **Entity Hierarchies (HierarchySystem)**: Parent-child attachments with local coordinate offsets (`offsetX`, `offsetY`) and optional cascading destruction (`cascadeDestroy`).
+22. **Save Envelope Metadata**: Bundle arbitrary game progress, pity counters, or quest stages directly inside HMAC-signed save envelopes.
 
 ---
 
@@ -129,7 +137,6 @@ const frameCues = cues.flush();
 ```ts
 import { SpatialGridSystem, PositionComponent } from 'ryuis-gamecore';
 
-// 엔티티의 PositionComponent 좌표를 프레임마다 SpatialHashGrid에 자동 반영
 const spatialSys = new SpatialGridSystem();
 world.addSystem(spatialSys);
 
@@ -140,11 +147,8 @@ const nearby = spatialSys.queryRadius(heroPos.x, heroPos.y, 75);
 ```ts
 import { StatAdapter, StatsComponent } from 'ryuis-gamecore';
 
-// 경량 스탯을 4단계 파이프라인으로 전환
 const extended = StatAdapter.toExtended(entity.get(StatsComponent)!);
 extended.addModifier({ stat: 'attack', stage: 'flat', value: 10, sourceId: 'buff' });
-
-// 다시 경량 스탯으로 반영
 StatAdapter.syncToStats(extended, entity.get(StatsComponent)!);
 ```
 
@@ -155,10 +159,116 @@ world.pause();         // 게임 일시정지
 world.resume();        // 게임 재개
 ```
 
-### I. PRNG 상태 선택적 직렬화
+### I. PRNG 상태 선택적 직렬화 & 커스텀 메타데이터
 ```ts
-// 결정론적 리플레이가 필요할 때 PRNG 상태 포함
-const saveJson = manager.save({ includePrngState: true });
-manager.load(saveJson);
+// 메타데이터(가챠 천장, 퀘스트 기록 등)와 PRNG 상태를 단일 HMAC 세이브로 보관
+const saveJson = manager.save({
+  includePrngState: true,
+  metadata: { bannerPity: 45, chapter: 3 },
+});
+const result = manager.load(saveJson);
+console.log(result.metadata.bannerPity); // 45
 ```
 
+### J. 오프라인 방치 보상 시뮬레이터 (OfflineProgressEngine)
+```ts
+import { OfflineProgressEngine } from 'ryuis-gamecore';
+
+const engine = new OfflineProgressEngine({ maxOfflineMs: 8 * 3600 * 1000 });
+const progress = engine.calculate({
+  lastSaveTime: Date.now() - 3600 * 1000,
+  currentTime: Date.now(),
+  rates: { gold: 10, wood: 2 }, // 초당 획득량
+});
+console.log(progress.rewards.gold); // 36000 Gold
+```
+
+### K. 분기형 대화 시스템 (DialogueSession)
+```ts
+import { DialogueSession } from 'ryuis-gamecore';
+
+const session = new DialogueSession({
+  tree: dialogueGraph,
+  blackboard: world.blackboard,
+});
+session.selectChoice(0); // 선택지 선택 시 블랙보드 플래그 자동 반영
+```
+
+### L. 시야 & 가시선 판정 (FieldOfView)
+```ts
+import { FieldOfView } from 'ryuis-gamecore';
+
+const fov = new FieldOfView({
+  width: 50,
+  height: 50,
+  isBlocking: (x, y) => dungeon.isWall(x, y),
+});
+const visibleCoords = fov.compute(heroX, heroY, 8); // 반경 8 시야각 계산
+const canSeeTarget = fov.hasLineOfSight(heroX, heroY, enemyX, enemyY);
+```
+
+### M. 행동 트리 AI (BehaviorTree)
+```ts
+import { BehaviorTree, SelectorNode, SequenceNode, ActionNode, ConditionNode } from 'ryuis-gamecore';
+
+const ai = new BehaviorTree(
+  new SelectorNode([
+    new SequenceNode([
+      new ConditionNode((ctx) => ctx.hasEnemyInRange),
+      new ActionNode((ctx) => ctx.attack()),
+    ]),
+    new ActionNode((ctx) => ctx.patrol()),
+  ])
+);
+ai.tick(context);
+```
+
+### N. 확정 천장 가챠 엔진 (GachaEngine)
+```ts
+import { GachaEngine } from 'ryuis-gamecore';
+
+const gacha = new GachaEngine({
+  baseProbability: 0.006, // 0.6% SSR
+  softPityStart: 74,
+  softPityIncrement: 0.06,
+  hardPity: 90,
+  rateUpItem: 'ssr_hero',
+  guaranteedRateUpOnSecond: true,
+});
+const pull = gacha.pull();
+```
+
+### O. 멀티플레이어 델타 동기화 (WorldDiffer)
+```ts
+import { WorldDiffer } from 'ryuis-gamecore';
+
+// 서버 측: 스냅샷 비교 후 차이점만 브로드캐스트
+const prev = WorldDiffer.captureSnapshot(serverWorld);
+// ... 게임 시뮬레이션 진행 ...
+const delta = WorldDiffer.createDelta(prev, serverWorld);
+
+// 클라이언트 측: 단 1줄로 수신된 패치 반영
+WorldDiffer.applyDelta(clientWorld, delta);
+```
+
+### P. 부모-자식 엔티티 계층 구조 (HierarchySystem)
+```ts
+import { HierarchyComponent, HierarchySystem, PositionComponent } from 'ryuis-gamecore';
+
+world.addSystem(new HierarchySystem());
+
+const mount = world.createEntity('mount');
+mount.add(new PositionComponent(100, 100));
+
+const rider = world.createEntity('rider');
+rider.add(new PositionComponent(0, 0));
+rider.add(new HierarchyComponent({
+  parentId: mount.id,
+  offsetX: 0,
+  offsetY: -15, // 탑승자 위치 오프셋
+  cascadeDestroy: true, // 탈것 파괴 시 탑승자 연쇄 삭제
+}));
+
+// mount 이동 시 rider 좌표도 (100, 85)로 자동 동기화
+world.update(16);
+```

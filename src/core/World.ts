@@ -266,9 +266,28 @@ export class World<Events extends EventMap = EventMap> implements EntityWorldEmi
     return entity;
   }
 
+  /**
+   * 지정된 고유 ID로 엔티티를 생성합니다 (역직렬화 및 델타 동기화용).
+   */
+  createEntityWithId(id: number, ...tags: string[]): Entity {
+    const entity = new Entity(tags, id);
+    entity._bindWorld(this);
+    this._entities.set(entity.id, entity);
+    this.invalidateCache();
+    this.notifyChange({ type: 'entity_created', entity });
+    return entity;
+  }
 
   removeEntity(id: number): void {
     this._pendingRemove.add(id);
+  }
+
+  /**
+   * 엔티티를 월드에서 파괴/제거합니다 (removeEntity의 별칭).
+   */
+  destroyEntity(entityOrId: Entity | number): void {
+    const id = typeof entityOrId === 'number' ? entityOrId : entityOrId.id;
+    this.removeEntity(id);
   }
 
   /**
@@ -423,6 +442,13 @@ export class World<Events extends EventMap = EventMap> implements EntityWorldEmi
     for (const system of this._systems) {
       this._queryCache.set(system, this._buildQuery(system));
     }
+  }
+
+  /**
+   * 예약된 지연 엔티티 삭제 큐를 즉시 플러시(정리)합니다.
+   */
+  flushRemovals(): void {
+    this._flushRemovals();
   }
 
   private _flushRemovals(): void {

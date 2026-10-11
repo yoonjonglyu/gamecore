@@ -4,6 +4,9 @@
  * 타일 통행 가능 여부(walkable) 검사와 좌표 유효성을 관리한다.
  */
 
+import { GridPathfinder, PathfindingOptions, PathResult, GridCoord } from './GridPathfinding';
+import { LineOfSight, FieldOfView } from './FieldOfView';
+
 export interface Tile {
   type: string;
   walkable: boolean;
@@ -77,5 +80,41 @@ export class GridMap {
     }
 
     return map;
+  }
+
+  /**
+   * 시작점부터 목표점까지의 최단 경로를 A* 알고리즘으로 탐색합니다.
+   */
+  findPath(
+    start: GridCoord,
+    goal: GridCoord,
+    options?: PathfindingOptions,
+  ): PathResult {
+    return GridPathfinder.findPath(this, start, goal, options);
+  }
+
+  /**
+   * 두 좌표 사이에 시야를 차단하는 장애물이 없는지 검사합니다 (Bresenham 알고리즘).
+   */
+  hasLineOfSight(
+    x0: number,
+    y0: number,
+    x1: number,
+    y1: number,
+    extraBlocking?: Set<string> | GridCoord[],
+  ): boolean {
+    return LineOfSight.hasLineOfSight(this, x0, y0, x1, y1, extraBlocking);
+  }
+
+  /**
+   * 중심 좌표로부터 반경(radius) 내에 보이는 가시 타일 목록을 계산합니다.
+   */
+  computeFOV(
+    originX: number,
+    originY: number,
+    radius: number,
+    options?: import('./FieldOfView').FOVOptions,
+  ): GridCoord[] {
+    return FieldOfView.compute(this, originX, originY, radius, options);
   }
 }

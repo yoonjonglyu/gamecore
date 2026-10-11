@@ -18,6 +18,8 @@ export interface SaveEnvelope {
   data: SerializedWorld;
   /** SHA-256 또는 HMAC-SHA256 기반 무결성 검증 서명 */
   checksum: string;
+  /** 게임 부가 메타데이터 (가챠 천장, 대화 진행 노드, 유저 커스텀 세이브 등) */
+  metadata?: Record<string, any>;
 }
 
 export interface DeserializationResult {
@@ -25,6 +27,7 @@ export interface DeserializationResult {
   world?: World<any>;
   version?: number;
   entities?: Entity[];
+  metadata?: Record<string, any>;
   error?: string;
   tampered?: boolean;
 }
@@ -73,25 +76,29 @@ export class SaveManager {
    * @param world 세이브할 월드 인스턴스
    * @param secretKey HMAC-SHA256 서명용 비밀키 (지정하지 않을 시 순수 SHA-256 체크섬)
    * @param version 저장할 스키마 버전 (기본값: currentVersion)
+   * @param options 직렬화 옵션 및 추가 메타데이터
    */
   static serialize(
     world: World<any>,
     secretKey?: string,
     version: number = SaveManager.currentVersion,
-    options?: import('./WorldSerializer').SerializeOptions,
+    options?: import('./WorldSerializer').SerializeOptions & { metadata?: Record<string, any> },
   ): string {
     const rawData = SaveManager._serializer.serialize(world, options);
     const dataStr = JSON.stringify(rawData);
+    const metaStr = options?.metadata ? JSON.stringify(options.metadata) : '';
+    const payloadToSign = dataStr + (metaStr ? `|meta:${metaStr}` : '');
 
     const checksum = secretKey
-      ? hmacSha256(dataStr, secretKey)
-      : sha256(dataStr);
+      ? hmacSha256(payloadToSign, secretKey)
+      : sha256(payloadToSign);
 
     const envelope: SaveEnvelope = {
       version,
       timestamp: Date.now(),
       data: rawData,
       checksum,
+      metadata: options?.metadata ? { ...options.metadata } : undefined,
     };
 
     return JSON.stringify(envelope);
@@ -126,11 +133,14 @@ export class SaveManager {
       };
     }
 
-    // 1. 체크섬 / HMAC 서명 무결성 검증
+    // 1. 체크섬 / HMAC 서명 무결성 검증 (metadata 포함)
     const dataStr = JSON.stringify(envelope.data);
+    const metaStr = envelope.metadata ? JSON.stringify(envelope.metadata) : '';
+    const payloadToSign = dataStr + (metaStr ? `|meta:${metaStr}` : '');
+
     const expectedChecksum = secretKey
-      ? hmacSha256(dataStr, secretKey)
-      : sha256(dataStr);
+      ? hmacSha256(payloadToSign, secretKey)
+      : sha256(payloadToSign);
 
     if (envelope.checksum !== expectedChecksum) {
       return {
@@ -161,6 +171,7 @@ export class SaveManager {
         world: targetWorld,
         version: SaveManager.currentVersion,
         entities,
+        metadata: envelope.metadata,
       };
     } catch (e: any) {
       return {

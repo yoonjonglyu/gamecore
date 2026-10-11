@@ -119,7 +119,7 @@ export class WorldSerializer {
     const createdEntities: Entity[] = [];
 
     for (const serializedEntity of parsed.entities) {
-      const entity = targetWorld.createEntity(...serializedEntity.tags);
+      const entity = targetWorld.createEntityWithId(serializedEntity.id, ...serializedEntity.tags);
 
       for (const compData of serializedEntity.components) {
         const comp = this.registry.deserializeComponent(compData.type, compData.data);

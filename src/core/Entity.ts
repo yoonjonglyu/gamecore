@@ -20,8 +20,13 @@ export class Entity {
   /** 소속 World의 이벤트 이미터 참조 */
   private _worldEmitter?: EntityWorldEmitter;
 
-  constructor(tags: string[] = []) {
-    this.id = Entity._nextId++;
+  constructor(tags: string[] = [], customId?: number) {
+    if (customId !== undefined) {
+      this.id = customId;
+      Entity._nextId = Math.max(Entity._nextId, customId + 1);
+    } else {
+      this.id = Entity._nextId++;
+    }
     tags.forEach((t) => this.tags.add(t));
   }
 

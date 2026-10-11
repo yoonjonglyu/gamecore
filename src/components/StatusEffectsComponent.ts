@@ -6,15 +6,21 @@
 
 import { Component } from '../core/Component';
 
+export type StackBehavior = 'refresh' | 'decay' | 'overflow_trigger';
+
 export interface StatusInstance {
   /** 상태이상 식별자 (예: 'burn', 'poison', 'haste') */
   id: string;
   /** 잔여 지속 시간 ms 또는 turns */
   remainingDuration: number;
+  /** 초기 기준 지속 시간 (decay 리셋용) */
+  initialDuration?: number;
   /** 현재 스택 수 */
   stacks: number;
   /** 최대 스택 수 (기본 1) */
   maxStacks: number;
+  /** 스택 초과 및 만료 시 동작 정책 (기본: 'refresh') */
+  stackBehavior?: StackBehavior;
   /** 부여한 entity ID */
   sourceEntityId: number;
   /** 도트 틱 간격 (ms 또는 turns, 없으면 틱 데미지 없음) */
@@ -45,13 +51,18 @@ export class StatusEffectsComponent extends Component {
       tickInterval?: number;
       tickDamage?: number;
       linkedModSourceIds?: string[];
+      stackBehavior?: StackBehavior;
     },
   ): void {
+    const stackBehavior = options?.stackBehavior ?? 'refresh';
+
     if (this._statuses.has(id)) {
       const existing = this._statuses.get(id)!;
       // 기존 상태이상이 있으면 duration 갱신 + 스택 추가
       existing.remainingDuration = Math.max(existing.remainingDuration, duration);
+      existing.initialDuration = duration;
       existing.stacks = Math.min(existing.stacks + stacks, maxStacks);
+      existing.stackBehavior = stackBehavior;
       if (options?.tickDamage !== undefined) existing.tickDamage = options.tickDamage;
       if (options?.tickInterval !== undefined) existing.tickInterval = options.tickInterval;
       if (options?.linkedModSourceIds) {
@@ -63,8 +74,10 @@ export class StatusEffectsComponent extends Component {
       this._statuses.set(id, {
         id,
         remainingDuration: duration,
+        initialDuration: duration,
         stacks: Math.min(stacks, maxStacks),
         maxStacks,
+        stackBehavior,
         sourceEntityId,
         tickInterval: options?.tickInterval,
         tickTime: 0,
@@ -101,8 +114,13 @@ export class StatusEffectsComponent extends Component {
     for (const [id, status] of this._statuses) {
       status.remainingDuration -= delta;
       if (status.remainingDuration <= 0) {
-        expired.push(id);
-        this._statuses.delete(id);
+        if (status.stackBehavior === 'decay' && status.stacks > 1) {
+          status.stacks -= 1;
+          status.remainingDuration = status.initialDuration ?? 1000;
+        } else {
+          expired.push(id);
+          this._statuses.delete(id);
+        }
       }
     }
     return expired;

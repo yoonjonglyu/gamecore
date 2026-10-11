@@ -110,4 +110,11 @@ export class DropTable {
 
     return results;
   }
+
+  /**
+   * 기본 독립 확률 드랍을 수행하는 편의 메서드 (rollIndependent의 별칭).
+   */
+  roll(random?: SeededRandom): DropResult[] {
+    return this.rollIndependent(random);
+  }
 }

@@ -22,6 +22,8 @@ import { TurnSystem } from '../systems/TurnSystem';
 import { FSMSystem } from '../systems/FSMSystem';
 import { QuestSystem } from '../systems/QuestSystem';
 import { CombatRoundingConfig } from '../math/RoundingPolicy';
+import { SaveManager, DeserializationResult } from '../serialization/SaveManager';
+import { SerializeOptions } from '../serialization/WorldSerializer';
 
 export interface GameWorldManagerOptions<Events extends EventMap = CoreEvents> {
   /** 시드 기반 결정론적 난수 시드 (number 또는 string) */
@@ -142,5 +144,25 @@ export class GameWorldManager<Events extends EventMap = CoreEvents> {
   destroy(): void {
     this.questSystem?.destroy();
     this.world.destroy();
+  }
+
+  /**
+   * 현재 월드를 HMAC 서명 세이브 JSON 문자열로 저장합니다.
+   */
+  save(
+    secretKey?: string,
+    options?: SerializeOptions & { metadata?: Record<string, any> },
+  ): string {
+    return SaveManager.serialize(this.world, secretKey, SaveManager.currentVersion, options);
+  }
+
+  /**
+   * 세이브 데이터를 현재 월드에 복원합니다.
+   */
+  load(
+    payload: string,
+    secretKey?: string,
+  ): DeserializationResult {
+    return SaveManager.deserialize(payload, this.world, secretKey);
   }
 }
