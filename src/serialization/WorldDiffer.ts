@@ -37,6 +37,8 @@ export interface WorldDelta {
 }
 
 export class WorldDiffer {
+  private static _defaultInstance: WorldDiffer = new WorldDiffer();
+
   private _serializer: WorldSerializer;
   private _lastEntityMap: Map<number, SerializedEntity> = new Map();
   private _lastBlackboard: Record<string, any> = {};
@@ -46,15 +48,64 @@ export class WorldDiffer {
   }
 
   /**
-   * 기준 스냅샷을 캡처합니다. 이후 createDelta() 호출 시 이 시점과의 차이를 산출합니다.
+   * 기준 스냅샷을 캡처하여 반환합니다.
+   * 반환된 스냅샷은 WorldDiffer.createDelta(prev, currentWorld)에 전달할 수 있습니다.
    */
-  captureSnapshot(world: World<any>): void {
+  static captureSnapshot(
+    world: World<any>,
+    serializer: WorldSerializer = defaultWorldSerializer,
+  ): import('./WorldSerializer').SerializedWorld {
+    WorldDiffer._defaultInstance.captureSnapshot(world);
+    return serializer.serialize(world);
+  }
+
+  /**
+   * 직전 스냅샷과 현재 월드(또는 단일 월드) 간의 델타 패치를 생성합니다.
+   * - 2개 인자: WorldDiffer.createDelta(prevSnapshot, currentWorld)
+   * - 1개 인자: WorldDiffer.createDelta(currentWorld) (정적 싱글톤 기준)
+   */
+  static createDelta(
+    prevOrCurrent: import('./WorldSerializer').SerializedWorld | World<any>,
+    currentWorld?: World<any>,
+    serializer: WorldSerializer = defaultWorldSerializer,
+  ): WorldDelta {
+    if (currentWorld) {
+      const prevSnapshot = prevOrCurrent as import('./WorldSerializer').SerializedWorld;
+      const differ = new WorldDiffer(serializer);
+      differ._lastEntityMap.clear();
+      for (const ent of prevSnapshot.entities) {
+        differ._lastEntityMap.set(ent.id, ent);
+      }
+      differ._lastBlackboard = { ...prevSnapshot.blackboard };
+      return differ.createDelta(currentWorld);
+    } else {
+      return WorldDiffer._defaultInstance.createDelta(prevOrCurrent as World<any>);
+    }
+  }
+
+  /**
+   * 델타 패치를 대상 월드에 즉시 적용(동기화)합니다.
+   */
+  static applyDelta(
+    world: World<any>,
+    delta: WorldDelta,
+    serializer: WorldSerializer = defaultWorldSerializer,
+  ): void {
+    const differ = new WorldDiffer(serializer);
+    differ.applyDelta(world, delta);
+  }
+
+  /**
+   * 기준 스냅샷을 캡처하고 직렬화된 스냅샷 객체를 반환합니다.
+   */
+  captureSnapshot(world: World<any>): import('./WorldSerializer').SerializedWorld {
     const serialized = this._serializer.serialize(world);
     this._lastEntityMap.clear();
     for (const ent of serialized.entities) {
       this._lastEntityMap.set(ent.id, ent);
     }
     this._lastBlackboard = { ...serialized.blackboard };
+    return serialized;
   }
 
   /**

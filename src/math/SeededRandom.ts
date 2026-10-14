@@ -21,7 +21,16 @@ export class SeededRandom {
   private _inc: bigint;
 
   constructor(seed: number | string = Date.now()) {
-    const numericSeed = typeof seed === 'string' ? SeededRandom.hashString(seed) : BigInt(Math.floor(seed));
+    let numericSeed: bigint;
+    if (typeof seed === 'string') {
+      numericSeed = SeededRandom.hashString(seed);
+    } else if (typeof seed === 'number' && Number.isFinite(seed)) {
+      numericSeed = BigInt(Math.floor(seed));
+    } else {
+      // NaN, Infinity 또는 비정상 입력 방어
+      numericSeed = SeededRandom.hashString(String(seed));
+    }
+
     // Default stream sequence
     this._inc = 1442695040888963407n | 1n; // Must be odd
     this._state = 0n;
@@ -117,10 +126,13 @@ export class SeededRandom {
   }
 
   /**
-   * 현재 상태로부터 파생된 독립적인 하위 PRNG 인스턴스 생성
+   * 현재 상태로부터 파생된 독립적인 하위 PRNG 인스턴스 생성 (64비트 합성 시드)
    */
   fork(): SeededRandom {
-    const child = new SeededRandom(this.nextUint32());
+    const hi = BigInt(this.nextUint32());
+    const lo = BigInt(this.nextUint32());
+    const combinedSeed = ((hi << 32n) | lo).toString();
+    const child = new SeededRandom(combinedSeed);
     return child;
   }
 

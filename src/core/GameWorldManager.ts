@@ -60,6 +60,13 @@ export class GameWorldManager<Events extends EventMap = CoreEvents> {
 
   constructor(options: GameWorldManagerOptions<Events> = {}) {
     const bus = options.bus ?? new EventBus<Events>();
+
+    if (options.seed === undefined && !options.random) {
+      console.warn(
+        '[GameCore] GameWorldManager: No seed provided. Initialized with non-deterministic Date.now(). Provide an explicit seed for reproducible simulation.',
+      );
+    }
+
     this.random = options.random ?? new SeededRandom(options.seed ?? Date.now());
 
     this.world = new World<Events>({

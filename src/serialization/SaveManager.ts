@@ -22,15 +22,19 @@ export interface SaveEnvelope {
   metadata?: Record<string, any>;
 }
 
-export interface DeserializationResult {
-  success: boolean;
-  world?: World<any>;
-  version?: number;
-  entities?: Entity[];
-  metadata?: Record<string, any>;
-  error?: string;
-  tampered?: boolean;
-}
+export type DeserializationResult =
+  | {
+      success: true;
+      world: World<any>;
+      version: number;
+      entities: Entity[];
+      metadata?: Record<string, any>;
+    }
+  | {
+      success: false;
+      error: string;
+      tampered?: boolean;
+    };
 
 export type MigrationFunction = (data: any) => any;
 
@@ -87,7 +91,8 @@ export class SaveManager {
     const rawData = SaveManager._serializer.serialize(world, options);
     const dataStr = JSON.stringify(rawData);
     const metaStr = options?.metadata ? JSON.stringify(options.metadata) : '';
-    const payloadToSign = dataStr + (metaStr ? `|meta:${metaStr}` : '');
+    const timestamp = Date.now();
+    const payloadToSign = `v:${version}|t:${timestamp}|data:${dataStr}${metaStr ? `|meta:${metaStr}` : ''}`;
 
     const checksum = secretKey
       ? hmacSha256(payloadToSign, secretKey)
@@ -95,13 +100,25 @@ export class SaveManager {
 
     const envelope: SaveEnvelope = {
       version,
-      timestamp: Date.now(),
+      timestamp,
       data: rawData,
       checksum,
       metadata: options?.metadata ? { ...options.metadata } : undefined,
     };
 
     return JSON.stringify(envelope);
+  }
+
+  /**
+   * 타이밍 공격(timing attack)을 방지하기 위한 상수 시간 문자열 비교
+   */
+  private static _constantTimeEqual(a: string, b: string): boolean {
+    if (a.length !== b.length) return false;
+    let diff = 0;
+    for (let i = 0; i < a.length; i++) {
+      diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+    }
+    return diff === 0;
   }
 
   /**
@@ -133,16 +150,29 @@ export class SaveManager {
       };
     }
 
-    // 1. 체크섬 / HMAC 서명 무결성 검증 (metadata 포함)
+    // 1. 체크섬 / HMAC 서명 무결성 검증 (version, timestamp, metadata 포함)
     const dataStr = JSON.stringify(envelope.data);
     const metaStr = envelope.metadata ? JSON.stringify(envelope.metadata) : '';
-    const payloadToSign = dataStr + (metaStr ? `|meta:${metaStr}` : '');
+    const payloadToSign = `v:${envelope.version}|t:${envelope.timestamp}|data:${dataStr}${metaStr ? `|meta:${metaStr}` : ''}`;
 
     const expectedChecksum = secretKey
       ? hmacSha256(payloadToSign, secretKey)
       : sha256(payloadToSign);
 
-    if (envelope.checksum !== expectedChecksum) {
+    let isValid = SaveManager._constantTimeEqual(envelope.checksum, expectedChecksum);
+
+    // 하위 호환성 fallback: 이전 v1.1.0/v1.1.1 서명 형식 (dataStr + metaStr)
+    if (!isValid) {
+      const legacyPayload = dataStr + (metaStr ? `|meta:${metaStr}` : '');
+      const legacyExpected = secretKey
+        ? hmacSha256(legacyPayload, secretKey)
+        : sha256(legacyPayload);
+      if (SaveManager._constantTimeEqual(envelope.checksum, legacyExpected)) {
+        isValid = true;
+      }
+    }
+
+    if (!isValid) {
       return {
         success: false,
         tampered: true,
@@ -150,12 +180,23 @@ export class SaveManager {
       };
     }
 
-    // 2. 버전 마이그레이션 적용
+    // 2. 버전 다운그레이드 방어: 세이브 버전이 현재 엔진의 최대 지원 버전보다 높으면 거부
+    const dataVersion = envelope.version ?? 1;
+    if (dataVersion > SaveManager.currentVersion) {
+      return {
+        success: false,
+        error: `Cannot load save version ${dataVersion}. Current engine supports up to version ${SaveManager.currentVersion}.`,
+      };
+    }
+
+    // 3. 버전 마이그레이션 적용
     let currentData = envelope.data;
-    let dataVersion = envelope.version ?? 1;
+    let actualVersion = dataVersion;
 
     try {
-      currentData = SaveManager._applyMigrations(currentData, dataVersion, SaveManager.currentVersion);
+      const migrationResult = SaveManager._applyMigrations(currentData, dataVersion, SaveManager.currentVersion);
+      currentData = migrationResult.data;
+      actualVersion = migrationResult.reachedVersion;
     } catch (e: any) {
       return {
         success: false,
@@ -163,13 +204,13 @@ export class SaveManager {
       };
     }
 
-    // 3. 월드 역직렬화
+    // 4. 월드 역직렬화
     try {
       const entities = SaveManager._serializer.deserialize(currentData, targetWorld);
       return {
         success: true,
         world: targetWorld,
-        version: SaveManager.currentVersion,
+        version: actualVersion,
         entities,
         metadata: envelope.metadata,
       };
@@ -183,24 +224,27 @@ export class SaveManager {
 
   /**
    * 등록된 마이그레이션 경로를 탐색하여 순차 변환을 실행한다.
+   * 경로가 중간에 끊기면 에러를 던져 침묵하는 데이터 손상을 방지한다.
    */
-  private static _applyMigrations(data: any, from: number, to: number): any {
-    if (from >= to) return data;
+  private static _applyMigrations(
+    data: any,
+    from: number,
+    to: number,
+  ): { data: any; reachedVersion: number } {
+    if (from === to) return { data, reachedVersion: to };
 
     let ver = from;
     let transformed = JSON.parse(JSON.stringify(data));
 
     while (ver < to) {
-      // ver -> 다음 버전으로 가는 마이그레이터 탐색
       const step = SaveManager._migrations.find((m) => m.fromVersion === ver);
       if (!step) {
-        // 더 이상 마이그레이터가 없으면 현재 데이터 반환
-        break;
+        throw new Error(`No migration path from version ${ver} to ${to}`);
       }
       transformed = step.migrator(transformed);
       ver = step.toVersion;
     }
 
-    return transformed;
+    return { data: transformed, reachedVersion: ver };
   }
 }

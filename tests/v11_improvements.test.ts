@@ -9,6 +9,7 @@ import {
   StatAdapter,
   WorldSerializer,
   SaveManager,
+  WorldDiffer,
   System,
 } from '../src';
 
@@ -238,4 +239,81 @@ describe('v1.1.0 Enhancements Suite', () => {
       expect(basic.attack).toBe(30);
     });
   });
+
+  // ─── 7. WorldDiffer Static API Verification ───────
+  describe('WorldDiffer Static Helpers & Compatibility', () => {
+    it('should support static captureSnapshot, createDelta, and applyDelta', () => {
+      const serverWorld = new World();
+      const hero = serverWorld.createEntity();
+      hero.add(new PositionComponent(10, 20));
+
+      // 1. Static capture
+      const prev = WorldDiffer.captureSnapshot(serverWorld);
+      expect(prev.entities.length).toBe(1);
+
+      // 2. State modification
+      const heroPos = hero.get(PositionComponent)!;
+      heroPos.x = 50;
+
+      // 3. Static createDelta (prev, current)
+      const delta = WorldDiffer.createDelta(prev, serverWorld);
+      expect(delta.updatedComponents.length).toBe(1);
+      expect(delta.updatedComponents[0].component.data.x).toBe(50);
+
+      // 4. Static applyDelta to clientWorld
+      const clientWorld = new World();
+      WorldDiffer.applyDelta(clientWorld, delta);
+      const clientHero = clientWorld.getEntity(hero.id);
+      expect(clientHero).toBeDefined();
+      expect(clientHero?.get(PositionComponent)?.x).toBe(50);
+    });
+  });
+
+  // ─── 8. SaveManager Version & Timestamp Tamper Defenses ────
+  describe('SaveManager Enhanced Signature Scope', () => {
+    it('should detect tampering of version and timestamp', () => {
+      const world = new World();
+      const saveStr = SaveManager.serialize(world, 'secret-key-123', 1);
+      const envelope = JSON.parse(saveStr);
+
+      // 1. 정상 복원 확인
+      const normalResult = SaveManager.deserialize(saveStr, new World(), 'secret-key-123');
+      expect(normalResult.success).toBe(true);
+
+      // 2. version 변조 (예: 다운그레이드) 시 감지
+      const tamperedVersion = { ...envelope, version: 99 };
+      const vResult = SaveManager.deserialize(JSON.stringify(tamperedVersion), new World(), 'secret-key-123');
+      expect(vResult.success).toBe(false);
+      expect(vResult.tampered).toBe(true);
+
+      // 3. timestamp 변조 (재사용/리플레이) 시 감지
+      const tamperedTime = { ...envelope, timestamp: envelope.timestamp + 10000 };
+      const tResult = SaveManager.deserialize(JSON.stringify(tamperedTime), new World(), 'secret-key-123');
+      expect(tResult.success).toBe(false);
+      expect(tResult.tampered).toBe(true);
+    });
+  });
+
+  // ─── 9. SeededRandom NaN/Infinity Safeguards & 64-bit fork ───
+  describe('SeededRandom Safeguards & fork entropy', () => {
+    it('should safely handle NaN, Infinity, and non-finite seeds without throwing', () => {
+      expect(() => new SeededRandom(NaN)).not.toThrow();
+      expect(() => new SeededRandom(Infinity)).not.toThrow();
+      expect(() => new SeededRandom(-Infinity)).not.toThrow();
+
+      const rng = new SeededRandom(NaN);
+      const val = rng.next();
+      expect(val).toBeGreaterThanOrEqual(0);
+      expect(val).toBeLessThan(1);
+    });
+
+    it('should fork with distinct deterministic entropy', () => {
+      const parent = new SeededRandom('parent-seed');
+      const child1 = parent.fork();
+      const child2 = parent.fork();
+
+      expect(child1.next()).not.toBe(child2.next());
+    });
+  });
 });
+

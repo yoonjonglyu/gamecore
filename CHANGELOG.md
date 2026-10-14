@@ -3,6 +3,18 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.2] - 2026-10-14
+
+### Fixed
+- **Plain Node.js ESM Import Resolution**: Bundled ESM and CJS outputs using `tsup` to resolve relative file extension requirements in raw Node.js (`ERR_MODULE_NOT_FOUND`).
+- **WorldDiffer Static API Compatibility**: Added static helper methods (`WorldDiffer.captureSnapshot`, `WorldDiffer.createDelta`, `WorldDiffer.applyDelta`) matching documentation while maintaining full instance support.
+- **SaveManager Security Hardening**: Expanded HMAC checksum scope to include `version` and `timestamp` (preventing version downgrade and replay attacks), and implemented constant-time comparison to protect against timing attacks.
+- **SeededRandom Robustness**: Guarded seed parsing against `NaN`, `Infinity`, and non-finite numbers; upgraded `fork()` to derive child PRNGs from 64-bit entropy.
+- **Package Optimization**: Disabled `.map` generation to reduce published bundle size from ~896KB down to lightweight distribution files.
+- **Documentation Alignment**: Updated `SaveManager` recipes across `README.md` and `README.ko.md` to demonstrate proper `result.success` handling.
+
+---
+
 ## [1.1.1] - 2026-10-14
 
 ### Changed

@@ -11,6 +11,7 @@ import { System } from './System';
 import { SeededRandom } from '../math/SeededRandom';
 import { Blackboard } from './Blackboard';
 import { TimerScheduler, ScheduledTask } from './TimerScheduler';
+import { sha256 } from '../serialization/crypto';
 
 export type QueryCacheMode = 'auto' | 'always';
 
@@ -462,6 +463,59 @@ export class World<Events extends EventMap = EventMap> implements EntityWorldEmi
     }
     this._pendingRemove.clear();
     this.invalidateCache();
+  }
+
+  /**
+   * 월드의 전체 상태(정규화된 엔티티, 컴포넌트 데이터, 전역 블랙보드, PRNG 상태)를 기반으로
+   * 64자리 결정론적 무결성 해시(SHA-256)를 산출합니다.
+   * 멀티플레이어 디싱크(Desync) 실시간 감지 및 리플레이 체크포인트 검증에 활용됩니다.
+   */
+  hash(options?: { includePrngState?: boolean }): string {
+    const includePrng = options?.includePrngState ?? true;
+
+    // 1. 엔티티 정렬 및 컴포넌트 정규화
+    const sortedEntityIds = Array.from(this._entities.keys()).sort((a, b) => a - b);
+    const entitiesSummary = sortedEntityIds.map((id) => {
+      const ent = this._entities.get(id)!;
+      const comps = ent.allComponents.map((c) => {
+        const typeName = c.constructor.name;
+        const plainData: Record<string, any> = {};
+        for (const key of Object.keys(c).sort()) {
+          if (!key.startsWith('_') && key !== 'entity' && key !== 'entityId') {
+            plainData[key] = (c as any)[key];
+          }
+        }
+        return { type: typeName, data: plainData };
+      }).sort((a, b) => a.type.localeCompare(b.type));
+
+      return {
+        id: ent.id,
+        tags: Array.from(ent.tags).sort(),
+        components: comps,
+      };
+    });
+
+    // 2. 블랙보드 정규화
+    const bbRecord = this.blackboard.toRecord();
+    const bbObj: Record<string, any> = {};
+    const bbKeys = Object.keys(bbRecord).sort();
+    for (const k of bbKeys) {
+      bbObj[k] = bbRecord[k];
+    }
+
+    // 3. PRNG 상태 (선택)
+    const prng = includePrng ? this.random.exportState() : null;
+
+    const canonicalPayload = JSON.stringify(
+      {
+        entities: entitiesSummary,
+        blackboard: bbObj,
+        prng,
+      },
+      (_, v) => (typeof v === 'bigint' ? v.toString() : v),
+    );
+
+    return sha256(canonicalPayload);
   }
 }
 

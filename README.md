@@ -177,25 +177,45 @@ rider.add(new HierarchyComponent({
 world.update(16); // Rider position automatically updates to (100, 85)
 ```
 
-### Save Tamper-Proofing with HMAC Signatures
+### Save Integrity: Tamper-Proofing (HMAC) vs Corruption Detection (SHA-256)
+* **With Secret Key**: Generates an **HMAC-SHA256 cryptographic signature** over version, timestamp, data, and metadata to protect against tampering, replay attacks, and version downgrade.
+* **Without Secret Key**: Computes a standard SHA-256 checksum for **accidental corruption detection**.
+
 ```ts
 import { SaveManager } from 'ryuis-gamecore';
 
-// Serialize with custom metadata and secret key
+// 1. Serialize with custom metadata and secret key (Tamper-Proof)
 const saveStr = SaveManager.serialize(world, 'player-secret-key', 1, {
   metadata: { gachaPity: 45, chapter: 3 },
 });
 
-// Restore with cryptographic verification
-const loaded = SaveManager.deserialize(saveStr, restoredWorld, 'player-secret-key');
-console.log(loaded.metadata.gachaPity); // 45
+// 2. Restore with cryptographic verification (Discriminated Union)
+const result = SaveManager.deserialize(saveStr, restoredWorld, 'player-secret-key');
+if (result.success && result.metadata) {
+  console.log(result.metadata.gachaPity); // 45
+} else if (!result.success) {
+  console.error('Save rejected:', result.error, 'Tampered:', result.tampered);
+}
 ```
+
+### Deterministic State Hashing (`world.hash()`)
+Quickly detect real-time multiplayer desynchronization and verify replay checkpoints:
+```ts
+// Calculate 64-character SHA-256 digest of normalized world state
+const currentHash = world.hash();
+if (serverHash !== clientHash) {
+  console.warn('Desynchronization detected! Requesting delta sync patch...');
+}
+```
+
+> **Deterministic Simulation Note**:
+> JavaScript floating-point operations (`Math.sin`, division) may exhibit subtle cross-architecture discrepancies. For strict cross-platform determinism (e.g. Web vs Native V8), use integer math or GameCore's built-in `CombatRoundingConfig` (`applyRounding`) to truncate/round fractional results.
 
 ---
 
 ## 🛠️ Testing & Verification
 
-GameCore includes a comprehensive test suite (176 tests across 22 suites) covering every subsystem:
+GameCore includes a comprehensive test suite (213 tests across 24 suites) covering every subsystem:
 
 ```bash
 # Run unit & integration tests

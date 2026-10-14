@@ -159,6 +159,39 @@ pet.add(new HierarchyComponent({ parentId: hero.id, offsetX: 2, offsetY: -3, cas
 world.update(16); // pet 좌표가 (12, 17)로 자동 동기화
 ```
 
+### 4. 세이브 무결성: 변조 방지(HMAC) vs 손상 감지(SHA-256)
+* **비밀키 지정 시**: 버전, 타임스탬프, 데이터, 메타데이터를 일괄 서명하는 **HMAC-SHA256 암호학적 서명**을 생성하여 버전 다운그레이드 및 리플레이 공격을 원천 차단합니다 (Tamper-Proof).
+* **비밀키 미지정 시**: 단순 데이터 손상 감지(Corruption Detection)용 SHA-256 체크섬을 사용합니다.
+
+```ts
+import { SaveManager } from 'ryuis-gamecore';
+
+const saveStr = SaveManager.serialize(world, 'secret-key-123', 1, {
+  metadata: { gachaPity: 45 },
+});
+
+// 판별 유니온 (Discriminated Union)으로 안전하게 타입 좁히기
+const result = SaveManager.deserialize(saveStr, newWorld, 'secret-key-123');
+if (result.success && result.metadata) {
+  console.log('로드 성공! 천장 카운트:', result.metadata.gachaPity);
+} else if (!result.success) {
+  console.error('로드 거부:', result.error, '변조 여부:', result.tampered);
+}
+```
+
+### 5. 결정론적 월드 상태 해시 (`world.hash()`)
+멀티플레이어 실시간 디싱크(Desync) 감지 및 리플레이 체크포인트 자동 검증:
+```ts
+// 정규화된 64자리 SHA-256 상태 해시 산출
+const currentHash = world.hash();
+if (serverHash !== clientHash) {
+  console.warn('디싱크 감지! 델타 동기화 패치 요청 중...');
+}
+```
+
+> **결정론 시뮬레이션 주의사항**:
+> JavaScript의 부동소수점 연산(`Math.sin`, 나눗셈 등)은 하드웨어/V8 버전에 따라 미세한 비트 차이가 발생할 수 있습니다. 완벽한 크로스 플랫폼 결정론을 위해서는 정수 연산이나 GameCore의 `CombatRoundingConfig`(`applyRounding`)를 사용하여 소수점을 제어하는 것을 권장합니다.
+
 ---
 
 ## 📄 라이선스
