@@ -1,7 +1,7 @@
 {
   "name": "ryuis-gamecore",
   "version": "1.1.0",
-  "description": "Headless 범용 게임 상태 & 모델 코어 엔진. 0-Dependency 순수 TS. ECS + EventBus, 결정론적 PRNG, 전략형 전투 파이프라인, 전역 블랙보드, 타이머 스케줄러, FSM, 2D 연속 공간 해시, 퀘스트/업적, 렌더러 연출 Cue 프로토콜, 방치형/대화/FOV/행동트리/가챠/계층엔티티/델타동기화 및 세이브 무결성 엔진.",
+  "description": "Headless universal game state & simulation core engine. Zero-dependency pure TypeScript. ECS, EventBus, deterministic PRNG, stat pipeline, pluggable combat, spatial hash, dialogue, FOV, behavior tree, gacha, hierarchy & delta-sync.",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -15,6 +15,32 @@
       "types": "./dist/react/index.d.ts"
     }
   },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yoonjonglyu/gamecore.git"
+  },
+  "homepage": "https://github.com/yoonjonglyu/gamecore#readme",
+  "bugs": {
+    "url": "https://github.com/yoonjonglyu/gamecore/issues"
+  },
+  "keywords": [
+    "game-engine",
+    "ecs",
+    "entity-component-system",
+    "headless",
+    "zero-dependency",
+    "gamecore",
+    "deterministic",
+    "roguelike",
+    "rpg",
+    "gacha",
+    "behavior-tree",
+    "spatial-hash",
+    "multiplayer-sync",
+    "state-machine",
+    "fsm",
+    "typescript"
+  ],
   "peerDependencies": {
     "react": ">=18.0.0"
   },
@@ -28,7 +54,9 @@
     "skills",
     "docs",
     "plugin.json",
-    "README.md"
+    "LICENSE",
+    "README.md",
+    "README.ko.md"
   ],
   "scripts": {
     "build": "tsc",
@@ -45,6 +73,6 @@
     "typescript": "^7.0.2",
     "vitest": "^5.0.2"
   },
-  "author": "ISA (류윤종)",
-  "license": "ISC"
+  "author": "ISA (Yoonjong Ryu)",
+  "license": "Apache-2.0"
 }
