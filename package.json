@@ -41,6 +41,9 @@
     "fsm",
     "typescript"
   ],
+  "engines": {
+    "node": ">=20.12.0"
+  },
   "peerDependencies": {
     "react": ">=18.0.0"
   },

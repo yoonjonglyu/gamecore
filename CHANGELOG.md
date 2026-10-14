@@ -3,6 +3,14 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.1] - 2026-10-14
+
+### Changed
+- Relicensed under **Apache License 2.0** for enhanced patent, trademark, and contributor protection.
+- Updated minimum Node.js runtime requirement to `>=20.12.0` (for modern Vitest/Rolldown ESM tooling).
+- Added multi-language documentation (`README.md` in English, `README.ko.md` in Korean).
+- Established CI/CD automation and community templates (`.github/workflows/ci.yml`, issue/PR templates).
+
 ---
 
 ## [1.1.0] - 2026-10-11
