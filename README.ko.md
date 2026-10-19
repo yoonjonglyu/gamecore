@@ -189,6 +189,26 @@ if (serverHash !== clientHash) {
 }
 ```
 
+---
+
+## 🛠️ v1.1.3 서브시스템 개선 및 동작 가이드
+
+### 1. 주요 버그 수정 및 누락 기능 구현
+* **React `useComponent` 리렌더링 버그 수정**: `notifyUpdated` 호출 시 내부 값 변경이 감지되도록 `entity.version` 기반 스냅샷 비교로 수정되었습니다.
+* **연출(Cue) 프로토콜 실연동**: `CombatSystem(req.cue)` 피격 연출, `StatusEffectSystem(rule.cueEffect, onReaction.emitCue)`의 원소 반응 연출이 `cue:triggered` 이벤트 및 `CueQueue`와 실연동되었습니다.
+* **A* 길찾기 한도 신호 (`maxStepsExceeded`)**: 기본 `maxSteps`가 10,000으로 상향되었으며, 탐색 한도 초과 시 `maxStepsExceeded: true`를 반환하여 "경로 없음(도달 불가)"과 "탐색 한도 초과"를 명확하게 구분할 수 있습니다.
+* **가챠 천장 0 처리**: `hardPityCount: 0` 설정 시 항상 최고 등급이 나오는 버그를 방지하고 "천장 비활성화"로 처리하며, 미설정 시에도 기본 확률이 왜곡되지 않습니다.
+* **커스텀 제약 fail-closed & 레벨 제약 일원화**: 오타로 인한 제약 해제를 방지하기 위해 미등록 custom 제약은 실패(`ok: false`)로 처리됩니다. 또한 레벨 제약 시 `ClassComponent`뿐만 아니라 `ProgressionComponent.level`도 자동 확인합니다.
+* **EventBus 리스너 예외 격리**: 리스너 중 하나가 예외를 던져도 다른 리스너들이 중단되지 않도록 `try-catch` 격리가 적용되었습니다.
+* **`TurnSystem.startRound(entities)` 즉시 캐싱**: `update()` 호출 전이라도 넘겨받은 엔티티 목록을 즉시 내부 캐시에 반영하여 `currentEntityId`가 항상 올바르게 설정됩니다.
+* **전리품 자동 연동**: `CombatSystem`에서 적 처치 시 `stats:died` 이벤트에 `killerId`가 포함되어 `LootSystem`과 자동 연동(아이템 및 경험치 자동 지급)됩니다.
+
+### 2. 알아두면 좋은 서브시스템 동작 특성
+* **스킬 쿨다운 단위**: 스킬 쿨다운은 `update(delta)`의 `delta`와 동일한 단위를 사용하며, 실행 `mode('turn' | 'realtime')`는 쿨다운 감산에 영향을 주지 않습니다 (실시간이면 ms, 턴제면 턴 단위로 delta를 전달).
+* **인벤토리 제거 처리**: 보유량을 초과하는 수량 제거나 인벤토리에 없는 아이템 제거 요청은 예외나 이벤트 없이 안전하게 무시됩니다 (슬롯 가득 참 시에는 `inventory:full` 발행).
+* **접사 생성 (AffixGenerator)**: 테이블에 정의되지 않은 알 수 없는 희귀도(Rarity)로 생성을 요청할 경우 예외를 던지지 않고 접사 없는 원본 아이템을 안전하게 반환합니다.
+* **계층 연쇄 삭제 (`cascadeDestroy`)**: 부모 엔티티 삭제 시 자식 엔티티들은 프레임 드랍을 방지하기 위해 단계당 한 틱(tick)씩 순차적으로 안전하게 삭제됩니다.
+
 > **결정론 시뮬레이션 주의사항**:
 > JavaScript의 부동소수점 연산(`Math.sin`, 나눗셈 등)은 하드웨어/V8 버전에 따라 미세한 비트 차이가 발생할 수 있습니다. 완벽한 크로스 플랫폼 결정론을 위해서는 정수 연산이나 GameCore의 `CombatRoundingConfig`(`applyRounding`)를 사용하여 소수점을 제어하는 것을 권장합니다.
 
@@ -196,3 +216,4 @@ if (serverHash !== clientHash) {
 
 ## 📄 라이선스
 Apache License 2.0 © ISA (Yoonjong Ryu / 류윤종)
+

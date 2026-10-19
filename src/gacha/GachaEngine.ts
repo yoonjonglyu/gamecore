@@ -98,15 +98,18 @@ export class GachaEngine {
     pity.pityCount++;
 
     const topTier = pool.tiers[0];
-    const hardPity = pool.hardPityCount ?? 90;
-    const softStart = pool.softPityStart ?? 74;
+    const hardPity = pool.hardPityCount;
+    const softStart = pool.softPityStart;
     const rateIncrease = pool.softPityRateIncrease ?? 0.06;
 
-    // 최고 등급 확률 계산 (소프트/하드 천장 반영)
+    // 최고 등급 확률 계산 (0 이하 또는 미설정 시 천장 비활성화)
     let topRate = topTier.baseRate;
-    if (pity.pityCount >= hardPity) {
+    const hasHardPity = hardPity !== undefined && hardPity > 0;
+    const hasSoftPity = softStart !== undefined && softStart > 0;
+
+    if (hasHardPity && pity.pityCount >= hardPity) {
       topRate = 1.0;
-    } else if (pity.pityCount >= softStart) {
+    } else if (hasSoftPity && pity.pityCount >= softStart) {
       const extraPulls = pity.pityCount - softStart + 1;
       topRate = Math.min(1.0, topTier.baseRate + extraPulls * rateIncrease);
     }

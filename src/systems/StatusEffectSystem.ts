@@ -16,6 +16,7 @@ import { StatsComponent } from '../components/StatsComponent';
 import { ExtendedStatsComponent } from '../components/ExtendedStatsComponent';
 import { StatModsComponent, StatModifier } from '../components/StatModsComponent';
 import { StatusReactionRegistry, StatusReactionRule } from '../status/StatusReactionEngine';
+import { CueQueue, createCue } from '../combat/CueProtocol';
 
 export interface ApplyStatusOptions {
   tickInterval?: number;
@@ -27,6 +28,17 @@ export interface ApplyStatusOptions {
 export class StatusEffectSystem extends System<CoreEvents> {
   readonly query: ComponentType[] = [StatusEffectsComponent];
   readonly reactionRegistry: StatusReactionRegistry = new StatusReactionRegistry();
+  private _cueQueue?: CueQueue;
+
+  /** 연출 큐(CueQueue) 주입 */
+  setCueQueue(cueQueue: CueQueue): this {
+    this._cueQueue = cueQueue;
+    return this;
+  }
+
+  get cueQueue(): CueQueue | undefined {
+    return this._cueQueue;
+  }
 
   /**
    * 반응 규칙을 간편하게 등록하는 헬퍼
@@ -79,6 +91,17 @@ export class StatusEffectSystem extends System<CoreEvents> {
         this._applyDirectDamage(entity, rule.bonusDamage, sourceEntityId);
       }
 
+      // 연출(Cue) 프로토콜 연동
+      const emitCue = (cueName: string) => {
+        const cue = createCue('status:reaction', { vfx: cueName, tag: 'status' }, sourceEntityId, entity.id);
+        this.bus.emit('cue:triggered', { cue });
+        this._cueQueue?.push(cue);
+      };
+
+      if (rule.cueEffect) {
+        emitCue(rule.cueEffect);
+      }
+
       // 커스텀 반응 콜백
       if (rule.onReaction) {
         const dummyNewInst: StatusInstance = {
@@ -90,6 +113,7 @@ export class StatusEffectSystem extends System<CoreEvents> {
         };
         rule.onReaction(entity, dummyNewInst, existingInst, {
           bus: this.bus,
+          emitCue,
         });
       }
 
@@ -202,7 +226,7 @@ export class StatusEffectSystem extends System<CoreEvents> {
     });
 
     if (nextHp <= 0) {
-      this.bus.emit('stats:died', { entityId: entity.id });
+      this.bus.emit('stats:died', { entityId: entity.id, killerId: sourceEntityId });
     }
   }
 
@@ -332,7 +356,7 @@ export class StatusEffectSystem extends System<CoreEvents> {
     });
 
     if (nextHp <= 0) {
-      this.bus.emit('stats:died', { entityId: entity.id });
+      this.bus.emit('stats:died', { entityId: entity.id, killerId: inst.sourceEntityId });
     }
   }
 

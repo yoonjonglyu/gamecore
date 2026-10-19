@@ -67,15 +67,16 @@ export function useComponent<T extends Component>(
   );
 
   const getSnapshot = useCallback(() => {
-    // version과 함께 컴포넌트 참조 반환
-    return entity ? entity.get(componentType) : undefined;
-  }, [entity, componentType]);
+    // entity.version을 스냅샷으로 사용하여 내부 값 변경(notifyUpdated) 감지
+    return entity ? entity.version : -1;
+  }, [entity]);
 
   const getServerSnapshot = useCallback(() => {
-    return undefined;
+    return -1;
   }, []);
 
-  return useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+  useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+  return entity ? entity.get(componentType) : undefined;
 }
 
 /**

@@ -24,6 +24,7 @@ import {
 } from '../combat/CombatPipeline';
 import { SeededRandom } from '../math/SeededRandom';
 import { CombatRoundingConfig } from '../math/RoundingPolicy';
+import { CueQueue, createCue } from '../combat/CueProtocol';
 
 export type { AttackRequest } from '../combat/CombatPipeline';
 
@@ -34,6 +35,8 @@ export interface CombatSystemOptions {
   random?: SeededRandom;
   /** 대미지 및 수치 라운딩 정책 */
   rounding?: CombatRoundingConfig;
+  /** 연출 큐 (CueQueue) */
+  cueQueue?: CueQueue;
 }
 
 export class CombatSystem extends System<CoreEvents> {
@@ -44,11 +47,13 @@ export class CombatSystem extends System<CoreEvents> {
   private _middlewares: CombatMiddleware[] = [];
   private _random?: SeededRandom;
   private _rounding?: CombatRoundingConfig;
+  private _cueQueue?: CueQueue;
 
   constructor(options: CombatSystemOptions = {}) {
     super();
     this._random = options.random;
     this._rounding = options.rounding;
+    this._cueQueue = options.cueQueue;
     this._calculator = options.calculator ?? new DefaultDamageCalculator(this._rounding);
 
     if (options.middlewares) {
@@ -97,6 +102,16 @@ export class CombatSystem extends System<CoreEvents> {
   use(middleware: CombatMiddleware): this {
     this._middlewares.push(middleware);
     return this;
+  }
+
+  /** 연출 큐(CueQueue) 주입 */
+  setCueQueue(cueQueue: CueQueue): this {
+    this._cueQueue = cueQueue;
+    return this;
+  }
+
+  get cueQueue(): CueQueue | undefined {
+    return this._cueQueue;
   }
 
   /** 외부(게임 로직, UI 등)에서 공격 요청을 큐에 넣는다 */
@@ -289,8 +304,15 @@ export class CombatSystem extends System<CoreEvents> {
       });
     }
 
+    // 연출(Cue) 프로토콜 연동
+    if (req.cue) {
+      const cueEvt = createCue('combat:attack', req.cue, req.attackerId, req.targetId);
+      this.bus.emit('cue:triggered', { cue: cueEvt });
+      this._cueQueue?.push(cueEvt);
+    }
+
     if (ctx.isTargetDead) {
-      this.bus.emit('stats:died', { entityId: req.targetId });
+      this.bus.emit('stats:died', { entityId: req.targetId, killerId: req.attackerId });
     }
   }
 }

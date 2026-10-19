@@ -46,7 +46,10 @@ export class LootSystem extends System<CoreEvents> {
   }
 
   onInit(): void {
-    // stats:died 발생 시 자동 감지할 수 있도록 버스 리스너 등록 가능
+    // stats:died 발생 시 killerId가 있으면 자동으로 전리품 처리 큐에 등록
+    this.bus.on('stats:died', ({ entityId, killerId }) => {
+      this.processLoot(entityId, killerId);
+    });
   }
 
   update(entities: Entity[], _delta: number): void {

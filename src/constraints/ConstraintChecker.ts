@@ -22,6 +22,7 @@
 
 import { Entity } from '../core/Entity';
 import { ClassComponent } from '../components/ClassComponent';
+import { ProgressionComponent } from '../components/ProgressionComponent';
 import { EquipmentComponent } from '../components/EquipmentComponent';
 import { StatsComponent } from '../components/StatsComponent';
 import { StatusEffectsComponent } from '../components/StatusEffectsComponent';
@@ -106,14 +107,17 @@ export class ConstraintChecker {
 
   private _checkLevel(entity: Entity, c: Extract<Constraint, { type: 'level' }>): ConstraintResult {
     const cls = entity.get(ClassComponent);
-    if (!cls) {
-      return { ok: false, failed: c, reason: `레벨 정보 없음 (ClassComponent 필요)` };
+    const prog = entity.get(ProgressionComponent);
+    const level = cls?.level ?? prog?.level;
+
+    if (level === undefined) {
+      return { ok: false, failed: c, reason: `레벨 정보 없음 (ClassComponent 또는 ProgressionComponent 필요)` };
     }
-    if (c.min !== undefined && cls.level < c.min) {
-      return { ok: false, failed: c, reason: `레벨 부족 (필요: ${c.min}, 현재: ${cls.level})` };
+    if (c.min !== undefined && level < c.min) {
+      return { ok: false, failed: c, reason: `레벨 부족 (필요: ${c.min}, 현재: ${level})` };
     }
-    if (c.max !== undefined && cls.level > c.max) {
-      return { ok: false, failed: c, reason: `레벨 초과 (최대: ${c.max}, 현재: ${cls.level})` };
+    if (c.max !== undefined && level > c.max) {
+      return { ok: false, failed: c, reason: `레벨 초과 (최대: ${c.max}, 현재: ${level})` };
     }
     return { ok: true };
   }
@@ -217,9 +221,8 @@ export class ConstraintChecker {
   private _checkCustom(entity: Entity, c: CustomConstraint): ConstraintResult {
     const handler = this._customHandlers.get(c.id);
     if (!handler) {
-      // 핸들러 미등록 시 경고 없이 통과 (관대한 정책)
-      // 엄격하게 하려면 return { ok: false, failed: c, reason: `커스텀 핸들러 미등록: ${c.id}` }
-      return { ok: true };
+      // 핸들러 미등록 시 fail-closed (보안 및 오타 방지 정책)
+      return { ok: false, failed: c, reason: `미등록 커스텀 제약 핸들러: ${c.id}` };
     }
     return handler(entity, c.data, c);
   }

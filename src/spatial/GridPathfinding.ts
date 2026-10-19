@@ -18,7 +18,7 @@ export interface PathfindingOptions {
   allowDiagonal?: boolean;
   /** 휴리스틱 알고리즘 (기본: 'manhattan' - 대각선 허용 시 'chebyshev' 권장) */
   heuristic?: HeuristicType;
-  /** 최대 탐색 스텝/노드 상한선 (기본: 2000, 무한 루프 및 프레임 드랍 방지) */
+  /** 최대 탐색 스텝/노드 상한선 (기본: 10000, 무한 루프 및 프레임 드랍 방지) */
   maxSteps?: number;
   /** 동적으로 추가할 장애물 좌표 집합 (예: 다른 유닛 위치) */
   extraObstacles?: Array<GridCoord> | Set<string>;
@@ -35,6 +35,8 @@ export interface PathResult {
   cost: number;
   /** 탐색 과정에서 방문한 노드 수 */
   visitedCount: number;
+  /** maxSteps 제한 초과로 인해 탐색이 중단되었는지 여부 */
+  maxStepsExceeded?: boolean;
 }
 
 interface Node {
@@ -88,7 +90,7 @@ export class GridPathfinder {
     const {
       allowDiagonal = false,
       heuristic = allowDiagonal ? 'chebyshev' : 'manhattan',
-      maxSteps = 2000,
+      maxSteps = 10000,
       extraObstacles,
       costMultiplier,
     } = options;
@@ -239,12 +241,14 @@ export class GridPathfinder {
       }
     }
 
-    // 경로를 찾지 못함
+    // 경로를 찾지 못함 (스텝 한도 초과 여부 확인)
+    const maxStepsExceeded = visitedCount >= maxSteps && openList.length > 0;
     return {
       found: false,
       path: [],
       cost: 0,
       visitedCount,
+      maxStepsExceeded,
     };
   }
 }

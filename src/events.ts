@@ -22,7 +22,7 @@ export interface CoreEvents {
 
   // ─── 스탯 변화 ────────────────────────────────
   'stats:hp:changed': { entityId: number; prev: number; next: number; delta: number };
-  'stats:died': { entityId: number };
+  'stats:died': { entityId: number; killerId?: number };
   'stats:revived': { entityId: number };
 
   // ─── 인벤토리 ─────────────────────────────────

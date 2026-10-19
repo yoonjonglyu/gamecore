@@ -53,7 +53,10 @@ export class TurnSystem extends System<CoreEvents> {
    * 생존한 모든 엔티티의 이니셔티브/속도를 비교하여 턴 큐를 구성하고 첫 번째 턴을 시작한다.
    */
   startRound(entities?: Entity[]): void {
-    const list = entities ?? this._cachedEntities;
+    if (entities) {
+      this._cachedEntities = entities;
+    }
+    const list = this._cachedEntities;
     const living = list.filter((e) => {
       const stats = e.get(StatsComponent);
       return !stats || !stats.isDead;

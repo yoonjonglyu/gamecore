@@ -3,6 +3,23 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.3] - 2026-10-19
+
+### Fixed
+- **React `useComponent` Hook Re-render Bug**: Changed snapshot evaluation from component reference to `entity.version`, enabling components mutated via internal properties and `entity.notifyUpdated()` to trigger React re-renders correctly.
+- **A* Pathfinder Step Limit Signal**: Added `maxStepsExceeded?: boolean` to `PathResult` and raised the default `maxSteps` from 2,000 to 10,000, clearly distinguishing between unreachable targets and step-budget exhaustion.
+- **Gacha Pity Zero Invalidation**: Fixed issue where `hardPityCount: 0` caused permanent 100% top-tier drops; values `<= 0` and unset pity options now safely disable pity mechanics without inflating base drop rates.
+- **Fail-Closed Custom Constraints**: Unregistered custom constraint handler IDs now fail-closed (`ok: false`) to prevent accidental constraint bypass caused by typos.
+- **Level Constraint Component Unification**: Enhanced `ConstraintChecker` level checks to inspect `ProgressionComponent.level` as well as `ClassComponent.level`, resolving initial level evaluation discrepancies.
+- **EventBus Exception Isolation**: Enclosed individual listener dispatches within `try/catch` blocks and iterated over static snapshot arrays, ensuring that one failing listener cannot prevent subsequent listeners from executing.
+- **TurnSystem Round Initialization Cache**: Updated `TurnSystem.startRound(entities)` to immediately cache supplied entities, preventing `currentEntityId` from resolving to `undefined` before `update()` is called.
+
+### Added
+- **Presentation Protocol (Cue) Runtime Wiring**: Wired `AttackRequest.cue` in `CombatSystem` and `StatusReactionRule.cueEffect` / `onReaction.emitCue` in `StatusEffectSystem` to actively dispatch `cue:triggered` events and push into optional `CueQueue` instances.
+- **LootSystem Automatic Death Integration**: Extended `stats:died` payload with optional `killerId`, enabling `LootSystem.onInit` to automatically queue and distribute loot/experience to killer entities upon fatal combat.
+
+---
+
 ## [1.1.2] - 2026-10-14
 
 ### Fixed

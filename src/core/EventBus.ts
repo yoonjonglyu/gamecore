@@ -38,9 +38,14 @@ export class EventBus<Events extends EventMap = EventMap> {
 
   emit<K extends keyof Events>(event: K, payload: Events[K]): void {
     const set = this._listeners.get(event);
-    if (!set) return;
-    for (const listener of set) {
-      listener(payload);
+    if (!set || set.size === 0) return;
+    const handlers = Array.from(set);
+    for (const listener of handlers) {
+      try {
+        listener(payload);
+      } catch (err) {
+        console.error(`[EventBus] Unhandled error in listener for event "${String(event)}":`, err);
+      }
     }
   }
 
