@@ -1,4 +1,4 @@
-# GameCore Built-in Systems Reference (v1.0.0)
+# GameCore Built-in Systems Reference (v1.1.4)
 
 GameCore가 기본 제공하는 핵심 시스템 및 파이프라인의 역할, 처리 흐름, API 명세입니다.
 
@@ -125,8 +125,8 @@ GameCore가 기본 제공하는 핵심 시스템 및 파이프라인의 역할, 
 ## 11. SaveManager (무결성 검증 & 버전 마이그레이션)
 * **역할**: 0-Dependency 순수 TS 기반 HMAC-SHA256 전자 서명 체크섬과 스키마 버전 마이그레이션을 지원합니다. 전역 블랙보드 및 FSM, Quests 상태까지 일괄 저장/복원합니다.
 * **핵심 API**:
-  * `SaveManager.serialize(world, secretKey?, version?)`: 위변조 방지 봉투(Envelope) JSON 문자열 생성
-  * `SaveManager.deserialize(payload, world, secretKey?)`: 체크섬 검증 및 버전 마이그레이션 후 복원 (`DeserializationResult`)
+  * `SaveManager.serialize(world, secretKey?, version?, options?)`: 위변조 방지 봉투(Envelope) JSON 문자열 생성 (`metadata`, `includePrngState` 지원)
+  * `SaveManager.deserialize(payload, world, secretKey?, options?)`: 체크섬 검증 및 버전 마이그레이션 후 복원 (`DeserializationResult`; 레거시 서명 호환은 `allowLegacySignature: true` 명시 시 허용)
   * `SaveManager.registerMigration(fromVer, toVer, migrator)`: 스키마 버전별 변환 체인 등록
 
 ---

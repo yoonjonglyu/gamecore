@@ -85,5 +85,5 @@ GameCore는 **데이터 중심(Data-Driven)**이며 **플랫폼 독립적(Platfo
    * `StatusEffectSystem`을 통한 도트 틱 주기 실행 및 버프 만료 시 연계 모디파이어 자동 롤백/클린업
 4. **UI 비종속 Observer / Subscription & React 19 바인딩**:
    * 제로 의존성 `entity.subscribe(listener)` 및 `world.subscribe(listener)` 내장
-   * `@ryuis-gamecore/react` 서브패스를 통해 React 19 `useSyncExternalStore` 기반 바인딩 훅 제공 (`useEntity`, `useComponent`, `useWorldEntities`)
+   * `ryuis-gamecore/react` 서브패스를 통해 React 19 `useSyncExternalStore` 기반 바인딩 훅 제공 (`useEntity`, `useComponent`, `useWorldEntities`)
 

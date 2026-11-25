@@ -21,7 +21,7 @@ export class Entity {
   private _worldEmitter?: EntityWorldEmitter;
 
   constructor(tags: string[] = [], customId?: number) {
-    if (customId !== undefined) {
+    if (customId !== undefined && Number.isFinite(customId)) {
       this.id = customId;
       Entity._nextId = Math.max(Entity._nextId, customId + 1);
     } else {
@@ -30,8 +30,8 @@ export class Entity {
     tags.forEach((t) => this.tags.add(t));
   }
 
-  /** @internal World 등록 시 자동 바인딩 */
-  _bindWorld(world: EntityWorldEmitter): this {
+  /** @internal World 등록/해제 시 자동 바인딩 */
+  _bindWorld(world?: EntityWorldEmitter): this {
     this._worldEmitter = world;
     return this;
   }
@@ -62,7 +62,7 @@ export class Entity {
    */
   notifyChange(change: EntityChange): void {
     this.version++;
-    for (const listener of this._listeners) {
+    for (const listener of Array.from(this._listeners)) {
       listener(this, change);
     }
   }
@@ -108,9 +108,17 @@ export class Entity {
   // ──────────────────────────────────────────────
 
   add<T extends Component>(component: T): this {
+    const type = component.constructor as ComponentType;
+    const displaced = this._components.get(type);
+    if (displaced && displaced !== component) {
+      displaced.entityId = -1;
+      displaced.entity = undefined;
+    }
+    if (component.entity && component.entity !== this && typeof component.entity.remove === 'function') {
+      component.entity.remove(type);
+    }
     component.entityId = this.id;
     component.entity = this;
-    const type = component.constructor as ComponentType;
     this._components.set(type, component);
     this.notifyChange({ type: 'component_added', componentType: type, component });
     this._worldEmitter?.emitComponentUpdated(this.id, type.name, component);
@@ -159,6 +167,10 @@ export class Entity {
     if (this._components.size === 0) return this;
     const removedComps = [...this._components.values()];
     this._components.clear();
+    for (const comp of removedComps) {
+      comp.entityId = -1;
+      comp.entity = undefined;
+    }
     this.notifyChange({ type: 'component_removed', payload: removedComps });
     if (this._worldEmitter) {
       for (const comp of removedComps) {
@@ -184,6 +196,10 @@ export class Entity {
   clear(): this {
     const removedComps = [...this._components.values()];
     this._components.clear();
+    for (const comp of removedComps) {
+      comp.entityId = -1;
+      comp.entity = undefined;
+    }
     this.tags.clear();
     this.notifyChange({ type: 'cleared' });
     if (this._worldEmitter) {

@@ -90,18 +90,23 @@ export class DropTable {
       let accumulated = 0;
 
       for (const entry of this._entries) {
-        accumulated += entry.weight ?? 1;
-        if (target <= accumulated) {
-          const min = entry.min ?? 1;
-          const max = entry.max ?? min;
+        const weight = entry.weight ?? 1;
+        if (weight <= 0) continue;
+        accumulated += weight;
+        if (target < accumulated) {
+          const rawMin = entry.min ?? 1;
+          const rawMax = entry.max ?? rawMin;
+          const [min, max] = rawMin <= rawMax ? [rawMin, rawMax] : [rawMax, rawMin];
           const quantity = random ? random.nextInt(min, max) : Math.floor(Math.random() * (max - min + 1)) + min;
 
-          // 이미 뽑힌 아이템이 있다면 수량 합산
-          const existing = results.find((r) => r.itemId === entry.itemId);
-          if (existing) {
-            existing.quantity += quantity;
-          } else {
-            results.push({ itemId: entry.itemId, quantity });
+          if (quantity > 0) {
+            // 이미 뽑힌 아이템이 있다면 수량 합산
+            const existing = results.find((r) => r.itemId === entry.itemId);
+            if (existing) {
+              existing.quantity += quantity;
+            } else {
+              results.push({ itemId: entry.itemId, quantity });
+            }
           }
           break;
         }

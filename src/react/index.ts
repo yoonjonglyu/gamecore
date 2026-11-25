@@ -17,7 +17,7 @@
  * ```
  */
 
-import { useSyncExternalStore, useMemo, useCallback } from 'react';
+import { useSyncExternalStore, useMemo, useCallback, useRef } from 'react';
 import { Entity, Component, ComponentType, World } from '../index';
 
 /**
@@ -38,8 +38,8 @@ export function useEntity(entity: Entity | undefined): Entity | undefined {
   }, [entity]);
 
   const getServerSnapshot = useCallback(() => {
-    return -1;
-  }, []);
+    return entity ? entity.version : -1;
+  }, [entity]);
 
   useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
   return entity;
@@ -47,7 +47,7 @@ export function useEntity(entity: Entity | undefined): Entity | undefined {
 
 /**
  * 특정 엔티티의 특정 컴포넌트를 구독하고 가져오는 React 훅.
- * 엔티티가 변경되거나 해당 컴포넌트가 변경/추가/제거될 때 자동 리렌더링된다.
+ * 해당 컴포넌트가 변경/추가/제거되거나 엔티티가 초기화될 때 자동 리렌더링된다.
  */
 export function useComponent<T extends Component>(
   entity: Entity | undefined,
@@ -57,8 +57,7 @@ export function useComponent<T extends Component>(
     (onStoreChange: () => void) => {
       if (!entity) return () => {};
       return entity.subscribe((_, change) => {
-        // 해당 컴포넌트 관련 변경이거나 전체 변경 시 리렌더
-        if (!change.componentType || change.componentType === componentType) {
+        if (change.componentType === componentType || change.type === 'cleared') {
           onStoreChange();
         }
       });
@@ -72,15 +71,15 @@ export function useComponent<T extends Component>(
   }, [entity]);
 
   const getServerSnapshot = useCallback(() => {
-    return -1;
-  }, []);
+    return entity ? entity.version : -1;
+  }, [entity]);
 
   useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
   return entity ? entity.get(componentType) : undefined;
 }
 
 /**
- * 월드의 엔티티 생성/삭제를 구독하는 React 훅.
+ * 월드의 엔티티 생성/삭제/컴포넌트 변경을 구독하는 React 훅.
  */
 export function useWorld(world: World | undefined): World | undefined {
   const subscribe = useCallback(
@@ -96,8 +95,8 @@ export function useWorld(world: World | undefined): World | undefined {
   }, [world]);
 
   const getServerSnapshot = useCallback(() => {
-    return -1;
-  }, []);
+    return world ? world.version : -1;
+  }, [world]);
 
   useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
   return world;
@@ -109,9 +108,25 @@ export function useWorld(world: World | undefined): World | undefined {
 export function useWorldEntities(world: World | undefined, query: ComponentType[] = []): Entity[] {
   useWorld(world);
 
+  // 가변 길이 spread(...query)로 인한 Hook 의존성 배열 길이 위반 방지
+  const queryRef = useRef<ComponentType[]>(query);
+  const queryVersionRef = useRef<number>(0);
+
+  const isSameQuery =
+    queryRef.current.length === query.length &&
+    query.every((t, idx) => t === queryRef.current[idx]);
+
+  if (!isSameQuery) {
+    queryRef.current = query;
+    queryVersionRef.current++;
+  }
+
+  const queryKey = queryVersionRef.current;
+
   return useMemo(() => {
     if (!world) return [];
-    if (query.length === 0) return world.entities;
-    return world.queryEntities(query);
-  }, [world, world?.version, ...query]);
+    const currentQuery = queryRef.current;
+    if (currentQuery.length === 0) return world.entities;
+    return world.queryEntities(currentQuery);
+  }, [world, world?.version, queryKey]);
 }

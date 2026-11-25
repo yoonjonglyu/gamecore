@@ -86,4 +86,30 @@ export class SkillsComponent extends Component {
     }
     return readyNow;
   }
+
+  toJSON(): { slots: SkillSlot[] } {
+    return {
+      slots: this.allSlots.map((s) => ({
+        def: s.def,
+        remainingCooldown: s.remainingCooldown,
+        useCount: s.useCount,
+      })),
+    };
+  }
+
+  static fromJSON(data: { slots?: SkillSlot[] }): SkillsComponent {
+    const comp = new SkillsComponent();
+    if (Array.isArray(data?.slots)) {
+      for (const s of data.slots) {
+        if (s?.def) {
+          comp._slots.set(s.def.id, {
+            def: s.def,
+            remainingCooldown: s.remainingCooldown ?? 0,
+            useCount: s.useCount ?? 0,
+          });
+        }
+      }
+    }
+    return comp;
+  }
 }

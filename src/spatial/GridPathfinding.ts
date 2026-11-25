@@ -207,9 +207,16 @@ export class GridPathfinder {
         if (!map.isWalkable(nx, ny)) continue;
         if (obstacleSet.has(nKey)) continue;
 
-        // 대각선 이동 시 코너 깎기(Corner cutting) 방지: 인접한 양쪽 직교 타일이 모두 벽이면 통과 불가
+        // 대각선 이동 시 코너 깎기(Corner cutting) 방지: 인접한 양쪽 직교 타일 중 하나라도 벽 또는 동적 장애물이면 통과 불가
         if (dx !== 0 && dy !== 0) {
-          if (!map.isWalkable(current.x + dx, current.y) || !map.isWalkable(current.x, current.y + dy)) {
+          const adjXKey = coordKey(current.x + dx, current.y);
+          const adjYKey = coordKey(current.x, current.y + dy);
+          if (
+            !map.isWalkable(current.x + dx, current.y) ||
+            !map.isWalkable(current.x, current.y + dy) ||
+            obstacleSet.has(adjXKey) ||
+            obstacleSet.has(adjYKey)
+          ) {
             continue;
           }
         }

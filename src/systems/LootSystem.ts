@@ -24,6 +24,7 @@ export class LootSystem extends System<CoreEvents> {
   private _pending: ProcessLootRequest[] = [];
   progressionSystem?: ProgressionSystem;
   private _random?: SeededRandom;
+  private _unsubDied?: () => void;
 
   constructor(progressionSystem?: ProgressionSystem, random?: SeededRandom) {
     super();
@@ -46,18 +47,27 @@ export class LootSystem extends System<CoreEvents> {
   }
 
   onInit(): void {
+    this._unsubDied?.();
     // stats:died 발생 시 killerId가 있으면 자동으로 전리품 처리 큐에 등록
-    this.bus.on('stats:died', ({ entityId, killerId }) => {
+    this._unsubDied = this.bus.on('stats:died', ({ entityId, killerId }) => {
       this.processLoot(entityId, killerId);
     });
+  }
+
+  onDestroy(): void {
+    this._unsubDied?.();
+    this._unsubDied = undefined;
+    this._pending = [];
   }
 
   update(entities: Entity[], _delta: number): void {
     if (this._pending.length === 0) return;
 
     const entityMap = new Map(entities.map((e) => [e.id, e]));
+    const queue = this._pending;
+    this._pending = [];
 
-    for (const req of this._pending) {
+    for (const req of queue) {
       const dead = entityMap.get(req.deadEntityId);
       if (!dead) continue;
 
@@ -74,7 +84,16 @@ export class LootSystem extends System<CoreEvents> {
         const inv = receiver.get(InventoryComponent);
         if (inv) {
           for (const item of rolledItems) {
-            inv.add(item.itemId, item.quantity);
+            const added = inv.add(item.itemId, item.quantity);
+            if (added) {
+              this.bus.emit('inventory:item:added', {
+                entityId: receiver.id,
+                defId: item.itemId,
+                quantity: item.quantity,
+              });
+            } else {
+              this.bus.emit('inventory:full', { entityId: receiver.id });
+            }
           }
         }
       }
@@ -92,7 +111,5 @@ export class LootSystem extends System<CoreEvents> {
         exp: expGained,
       });
     }
-
-    this._pending = [];
   }
 }

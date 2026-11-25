@@ -25,6 +25,8 @@ import { ClassComponent } from '../components/ClassComponent';
 import { ProgressionComponent } from '../components/ProgressionComponent';
 import { EquipmentComponent } from '../components/EquipmentComponent';
 import { StatsComponent } from '../components/StatsComponent';
+import { ExtendedStatsComponent } from '../components/ExtendedStatsComponent';
+import { StatModsComponent } from '../components/StatModsComponent';
 import { StatusEffectsComponent } from '../components/StatusEffectsComponent';
 import {
   Constraint,
@@ -177,10 +179,25 @@ export class ConstraintChecker {
 
   private _checkStatMin(entity: Entity, c: Extract<Constraint, { type: 'stat_min' }>): ConstraintResult {
     const stats = entity.get(StatsComponent);
-    if (!stats) {
-      return { ok: false, failed: c, reason: `스탯 정보 없음 (StatsComponent 필요)` };
+    const ext = entity.get(ExtendedStatsComponent);
+    const mods = entity.get(StatModsComponent);
+
+    if (!stats && !ext) {
+      return { ok: false, failed: c, reason: `스탯 정보 없음 (StatsComponent 또는 ExtendedStatsComponent 필요)` };
     }
-    const value = (stats as any)[c.stat];
+
+    let value: number | undefined;
+    if (stats) {
+      const allowedStats = new Set(['hp', 'maxHp', 'mp', 'maxMp', 'attack', 'defense', 'speed']);
+      if (allowedStats.has(c.stat)) {
+        const base = (stats as any)[c.stat] as number;
+        value = mods && c.stat !== 'hp' && c.stat !== 'mp' ? mods.compute(c.stat, base) : base;
+      }
+    }
+    if (value === undefined && ext && ext.pipeline.hasStat(c.stat)) {
+      value = ext.get(c.stat);
+    }
+
     if (typeof value !== 'number') {
       return { ok: false, failed: c, reason: `알 수 없는 스탯: ${c.stat}` };
     }

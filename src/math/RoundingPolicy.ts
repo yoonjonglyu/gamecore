@@ -30,33 +30,41 @@ export const DEFAULT_ROUNDING_CONFIG: Required<CombatRoundingConfig> = {
  * 부동소수점 미세 오차를 방지하기 위해 정밀도 보정을 수행한다.
  */
 export function applyRounding(value: number, config?: CombatRoundingConfig): number {
-  if (config?.mode === 'raw') {
+  if (config?.mode === 'raw' || !Number.isFinite(value)) {
     return value;
   }
 
   const mode = config?.mode ?? 'round';
-  const decimals = Math.max(0, config?.decimals ?? 0);
+  const rawDecimals = config?.decimals ?? 0;
+  const decimals = Number.isFinite(rawDecimals)
+    ? Math.min(15, Math.max(0, Math.trunc(rawDecimals)))
+    : 0;
 
-  if (decimals === 0) {
-    switch (mode) {
-      case 'floor':
-        return Math.floor(value + Number.EPSILON);
-      case 'ceil':
-        return Math.ceil(value - Number.EPSILON);
-      case 'round':
-      default:
-        return Math.round(value);
+  const factor = decimals === 0 ? 1 : 10 ** decimals;
+  const scaled = value * factor;
+  // 크기에 비례한 IEEE-754 미세 부동소수점 오차 보정 (예: 0.29 * 100 = 28.999999999999996 -> 29)
+  const eps = Math.max(Number.EPSILON, Math.abs(scaled) * 1e-12);
+
+  let roundedScaled: number;
+  switch (mode) {
+    case 'floor':
+      roundedScaled = Math.floor(scaled + eps);
+      break;
+    case 'ceil':
+      roundedScaled = Math.ceil(scaled - eps);
+      break;
+    case 'round':
+    default: {
+      // Half-away-from-zero / standard positive half-up with float noise compensation (1.005 * 100 = 100.49999999999999)
+      if (scaled >= 0) {
+        roundedScaled = Math.round(scaled + eps);
+      } else {
+        roundedScaled = Math.round(scaled - eps);
+      }
+      break;
     }
   }
 
-  const factor = 10 ** decimals;
-  switch (mode) {
-    case 'floor':
-      return Math.floor(value * factor + Number.EPSILON) / factor;
-    case 'ceil':
-      return Math.ceil(value * factor - Number.EPSILON) / factor;
-    case 'round':
-    default:
-      return Math.round(value * factor) / factor;
-  }
+  const result = decimals === 0 ? roundedScaled : roundedScaled / factor;
+  return result === 0 ? 0 : result;
 }

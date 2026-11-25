@@ -59,7 +59,7 @@ export class ProgressionComponent extends Component {
 
   /** 경험치 추가 및 레벨업 계산 (연속 레벨업 지원) */
   addExp(amount: number): { leveledUp: boolean; oldLevel: number; newLevel: number; levelsGained: number } {
-    if (this.isMaxLevel) {
+    if (!Number.isFinite(amount) || amount <= 0 || this.isMaxLevel) {
       return { leveledUp: false, oldLevel: this.level, newLevel: this.level, levelsGained: 0 };
     }
 
@@ -67,8 +67,12 @@ export class ProgressionComponent extends Component {
     this.currentExp += amount;
 
     let levelsGained = 0;
-    while (!this.isMaxLevel && this.currentExp >= this.requiredExp) {
-      this.currentExp -= this.requiredExp;
+    while (!this.isMaxLevel) {
+      const req = this.requiredExp;
+      if (!Number.isFinite(req) || req <= 0 || this.currentExp < req) {
+        break;
+      }
+      this.currentExp -= req;
       this.level++;
       levelsGained++;
     }

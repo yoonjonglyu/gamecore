@@ -31,6 +31,7 @@ import {
   PositionComponent,
   TurnComponent,
   InventoryComponent,
+  EquipmentComponent,
   ProgressionComponent,
   LootComponent,
   StatModsComponent,
@@ -142,6 +143,7 @@ export function runDungeonCrawlerDemo() {
   hero.add(new PositionComponent({ x: 1, y: 1 }))
       .add(new TurnComponent({ maxActionPoints: 2 }))
       .add(new ProgressionComponent({ level: 1, expFormula: () => 50 }))
+      .add(new EquipmentComponent())
       .add(new StatModsComponent());
 
   const goblin = factory.spawn('goblin_scout');
@@ -189,10 +191,9 @@ export function runDungeonCrawlerDemo() {
   const goblinStats = goblin.get(StatsComponent)!;
   console.log(`[상태] 공격 후 고블린 잔여 HP: ${goblinStats.hp}/${goblinStats.maxHp}`);
 
-  // 고블린 사망 확인 및 전리품 처리
+  // 고블린 사망 확인 (전리품은 LootSystem이 stats:died 이벤트를 수신하여 자동 처리)
   if (goblinStats.isDead) {
     console.log(`[전투] 고블린 정찰병이 쓰러졌습니다!`);
-    loot.processLoot(goblin.id, hero.id);
     world.update(16);
   }
 

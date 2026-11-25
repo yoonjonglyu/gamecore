@@ -16,6 +16,8 @@ import { System } from '../core/System';
 import { CoreEvents } from '../events';
 import { TurnComponent } from '../components/TurnComponent';
 import { StatsComponent } from '../components/StatsComponent';
+import { ExtendedStatsComponent } from '../components/ExtendedStatsComponent';
+import { StatModsComponent } from '../components/StatModsComponent';
 
 export class TurnSystem extends System<CoreEvents> {
   readonly query: ComponentType[] = [TurnComponent];
@@ -59,14 +61,20 @@ export class TurnSystem extends System<CoreEvents> {
     const list = this._cachedEntities;
     const living = list.filter((e) => {
       const stats = e.get(StatsComponent);
-      return !stats || !stats.isDead;
+      const ext = e.get(ExtendedStatsComponent);
+      return !(stats?.isDead || ext?.isDead);
     });
 
-    // 이니셔티브 기준 내림차순 정렬 (높은 순서대로 먼저 행동)
+    // 이니셔티브 기준 내림차순 정렬 (StatModsComponent 버프/장비 속도 반영)
     living.sort((a, b) => {
-      const initA = a.get(TurnComponent)?.initiative ?? a.get(StatsComponent)?.speed ?? 0;
-      const initB = b.get(TurnComponent)?.initiative ?? b.get(StatsComponent)?.speed ?? 0;
-      return initB - initA;
+      const getSpd = (ent: Entity) => {
+        const turnInit = ent.get(TurnComponent)?.initiative;
+        if (turnInit !== undefined) return turnInit;
+        const stats = ent.get(StatsComponent);
+        if (stats) return stats.computedSpeed(ent.get(StatModsComponent));
+        return ent.get(ExtendedStatsComponent)?.get('speed') ?? 0;
+      };
+      return getSpd(b) - getSpd(a);
     });
 
     this._round++;
@@ -93,6 +101,9 @@ export class TurnSystem extends System<CoreEvents> {
         round: this._round,
         entityId: prevId,
       });
+    } else if (this._round === 0 || this._currentIndex >= this._turnQueue.length) {
+      // 이미 라운드가 종료되었거나 시작되지 않았으면 중복 turn:round:ended 발행 방지
+      return undefined;
     }
 
     this._currentIndex++;
@@ -105,7 +116,9 @@ export class TurnSystem extends System<CoreEvents> {
       // 엔티티가 존재하고 살아있는 경우 해당 턴 시작
       if (entity) {
         const stats = entity.get(StatsComponent);
-        if (!stats || !stats.isDead) {
+        const ext = entity.get(ExtendedStatsComponent);
+        const isDead = Boolean(stats?.isDead || ext?.isDead);
+        if (!isDead) {
           const turn = entity.get(TurnComponent);
           if (turn) turn.resetAP();
 

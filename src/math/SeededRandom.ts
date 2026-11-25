@@ -15,7 +15,6 @@ export class SeededRandom {
   // 64-bit BigInt constants for PCG32
   private static readonly MULTIPLIER = 6364136223846793005n;
   private static readonly MASK64 = 0xffffffffffffffffn;
-  private static readonly MASK32 = 0xffffffffn;
 
   private _state: bigint;
   private _inc: bigint;
@@ -81,9 +80,16 @@ export class SeededRandom {
    * min 이상 max 이하의 정수 반환 [min, max]
    */
   nextInt(min: number, max: number): number {
-    if (min > max) [min, max] = [max, min];
-    const range = max - min + 1;
-    return min + Math.floor(this.next() * range);
+    let lo = Math.min(min, max);
+    let hi = Math.max(min, max);
+    lo = Math.ceil(lo);
+    hi = Math.floor(hi);
+    if (lo > hi) {
+      // 범위 내 정수가 없는 분수 구간 fallback (예: nextInt(0.2, 0.8))
+      return Math.round((min + max) / 2);
+    }
+    const range = hi - lo + 1;
+    return lo + Math.floor(this.next() * range);
   }
 
   /**
@@ -150,7 +156,7 @@ export class SeededRandom {
    * 직렬화된 PRNG 상태 복원
    */
   importState(state: PRNGState): void {
-    this._state = BigInt(state.state);
-    this._inc = BigInt(state.inc);
+    this._state = BigInt(state.state) & SeededRandom.MASK64;
+    this._inc = (BigInt(state.inc) & SeededRandom.MASK64) | 1n;
   }
 }

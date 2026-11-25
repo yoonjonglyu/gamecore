@@ -92,7 +92,8 @@ export class OfflineProgressEngine {
 
     const diffMs = Math.max(0, currentTimestamp - lastTimestamp);
     const elapsedSeconds = Math.floor(diffMs / 1000);
-    const appliedSeconds = Math.min(elapsedSeconds, maxOfflineSeconds);
+    const maxAllowed = Number.isFinite(maxOfflineSeconds) ? Math.max(0, maxOfflineSeconds) : elapsedSeconds;
+    const appliedSeconds = Math.min(elapsedSeconds, maxAllowed);
     const isCapped = elapsedSeconds > maxOfflineSeconds;
 
     // 1. 자원 단위 변환 계수 (초 단위 기준)
@@ -111,7 +112,7 @@ export class OfflineProgressEngine {
     if (stamina && stamina.secondsPerPoint > 0) {
       const pointsRecoverable = Math.floor(appliedSeconds / stamina.secondsPerPoint);
       const prev = stamina.current;
-      const next = Math.min(stamina.max, prev + pointsRecoverable);
+      const next = prev >= stamina.max ? prev : Math.min(stamina.max, prev + pointsRecoverable);
       staminaResult = {
         prev,
         next,

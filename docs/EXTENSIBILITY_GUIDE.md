@@ -18,7 +18,7 @@
 
 ### 1) 데이터 & 컴포넌트
 ```ts
-import { Component, System, Entity, StatModsComponent } from 'gamecore';
+import { Component, System, Entity, StatModsComponent } from 'ryuis-gamecore';
 
 // 문양 컴포넌트: 장착된 룬 ID 목록
 export class RuneComponent extends Component {
@@ -52,7 +52,7 @@ export class RuneSystem extends System {
 
 ## 💡 실전 예제 2: 펫 / 소환수 (Pet / Companion) 시스템
 
-펫은 별도의 엔진을 만들 필요 없이, **GameCore의 [Entity](file:///e:/withc/Documents/coding/gamecore/src/core/Entity.ts) 그 자체**로 표현됩니다.
+펫은 별도의 엔진을 만들 필요 없이, **GameCore의 [Entity](../src/core/Entity.ts) 그 자체**로 표현됩니다.
 
 ```ts
 // 1. 펫 블루프린트 등록
@@ -74,11 +74,15 @@ wolf.add(new CompanionComponent(hero.id));
 
 // 4. PetSystem (EventBus를 통해 주인의 행동에 반응)
 class PetSystem extends System {
+  readonly query = [];
+
   onInit() {
     this.bus.on('combat:damage', ({ attackerId, targetId }) => {
       // 주인이 적을 공격하면 펫도 협동 공격 실행
     });
   }
+
+  update(): void {}
 }
 ```
 

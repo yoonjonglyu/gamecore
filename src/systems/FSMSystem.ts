@@ -18,11 +18,12 @@ export class FSMSystem extends System<CoreEvents> {
       if (!fsm) continue;
 
       const result = fsm._tick(delta);
-      if (result.changed) {
-        (this.bus as any).emit('fsm:state:changed', {
+      // entity가 월드에 바인딩되지 않은 단독 사용 시에만 시스템에서 이벤트 발행 (이중 발행 방지)
+      if (result.changed && !entity.world) {
+        this.bus.emit('fsm:state:changed', {
           entityId: entity.id,
-          prev: result.prev,
-          current: result.current,
+          prev: result.prev ?? result.current,
+          next: result.current,
         });
       }
     }

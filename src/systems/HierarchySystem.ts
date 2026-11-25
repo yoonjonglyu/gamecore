@@ -22,23 +22,53 @@ export class HierarchySystem extends System {
   update(entities: Entity[]): void {
     if (!this.bus) return;
 
-    for (const entity of entities) {
+    const synced = new Set<number>();
+
+    const syncEntity = (entity: Entity, chain: Set<number>): void => {
+      if (synced.has(entity.id)) return;
       const hierarchy = entity.get(HierarchyComponent);
-      if (!hierarchy || hierarchy.parentId === undefined) continue;
+      if (!hierarchy) {
+        synced.add(entity.id);
+        return;
+      }
 
-      // 부모 엔티티 조회
+      // 등록된 childIds 중 더 이상 유효하지 않은 자식 정리
+      for (const cid of [...hierarchy.childIds]) {
+        const child = entity.world?.getEntity(cid);
+        const childH = child?.get(HierarchyComponent);
+        if (!child || !childH || childH.parentId !== entity.id) {
+          hierarchy.removeChild(cid);
+        }
+      }
+
+      if (hierarchy.parentId === undefined) {
+        synced.add(entity.id);
+        return;
+      }
+
+      // 자기 참조 / 순환 참조 가드
+      if (hierarchy.parentId === entity.id || chain.has(hierarchy.parentId)) {
+        hierarchy.parentId = undefined;
+        synced.add(entity.id);
+        return;
+      }
+
       const parent = entity.world?.getEntity(hierarchy.parentId);
-
       if (!parent) {
         // 부모가 소멸된 경우
         if (hierarchy.cascadeDestroy && entity.world) {
           entity.world.destroyEntity(entity);
         } else {
-          // 부모 연결 해제
           hierarchy.parentId = undefined;
         }
-        continue;
+        synced.add(entity.id);
+        return;
       }
+
+      // 부모 먼저 동기화 (다단계 계층에서의 1틱 지연 방지)
+      chain.add(entity.id);
+      syncEntity(parent, chain);
+      chain.delete(entity.id);
 
       // 부모의 자식 목록에 등록 보장
       const parentHierarchy = parent.get(HierarchyComponent);
@@ -54,6 +84,12 @@ export class HierarchySystem extends System {
         childPos.x = parentPos.x + hierarchy.offsetX;
         childPos.y = parentPos.y + hierarchy.offsetY;
       }
+
+      synced.add(entity.id);
+    };
+
+    for (const entity of entities) {
+      syncEntity(entity, new Set());
     }
   }
 }

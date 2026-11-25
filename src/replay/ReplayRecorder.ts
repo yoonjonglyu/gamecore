@@ -8,6 +8,16 @@ import { ReplayAction, ReplayCheckpoint, ReplayData } from './types';
 export interface ReplayRecorderOptions {
   version?: string;
   metadata?: Record<string, any>;
+  timestamp?: number;
+}
+
+function safeClone<T>(value: T): T {
+  if (value === undefined || value === null || typeof value !== 'object') return value;
+  try {
+    return JSON.parse(JSON.stringify(value));
+  } catch {
+    return value;
+  }
 }
 
 export class ReplayRecorder {
@@ -22,15 +32,15 @@ export class ReplayRecorder {
   constructor(seed: number | string, options?: ReplayRecorderOptions) {
     this.seed = seed;
     this.version = options?.version ?? '1.0.0';
-    this.metadata = options?.metadata;
-    this.timestamp = Date.now();
+    this.metadata = safeClone(options?.metadata);
+    this.timestamp = options?.timestamp ?? Date.now();
   }
 
   /**
    * 특정 틱 시점의 액션을 기록합니다.
    */
   recordAction(tick: number, actionType: string, payload?: any): this {
-    this._actions.push({ tick, actionType, payload });
+    this._actions.push({ tick, actionType, payload: safeClone(payload) });
     return this;
   }
 

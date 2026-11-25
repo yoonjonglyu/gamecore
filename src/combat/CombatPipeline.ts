@@ -129,7 +129,8 @@ export class DefaultDamageCalculator implements DamageCalculator {
     if (ctx.damageType === 'true') {
       result = Math.max(0, ctx.rawDamage);
     } else {
-      const effectiveDefense = Math.max(0, ctx.targetDefense * (1 - ctx.armorPen));
+      const pen = ctx.damageType === 'magical' ? ctx.magicPen : ctx.armorPen;
+      const effectiveDefense = Math.max(0, ctx.targetDefense * (1 - pen));
       result = Math.max(0, ctx.rawDamage - effectiveDefense);
     }
 

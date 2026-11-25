@@ -4,7 +4,7 @@
  * 반복적인 보일러플레이트 코드 없이 선언적으로 게임 월드를 부트스트랩할 수 있다.
  */
 
-import { World, WorldOptions } from './World';
+import { World } from './World';
 import { EventBus, EventMap } from './EventBus';
 import { System } from './System';
 import { SeededRandom } from '../math/SeededRandom';
@@ -94,7 +94,7 @@ export class GameWorldManager<Events extends EventMap = CoreEvents> {
     this.statModSystem = new StatModSystem();
     this.statusEffectSystem = new StatusEffectSystem();
     this.progressionSystem = new ProgressionSystem();
-    this.lootSystem = new LootSystem(this.progressionSystem);
+    this.lootSystem = new LootSystem(this.progressionSystem, this.random);
     this.equipmentSystem = new EquipmentSystem();
     this.movementSystem = new MovementSystem();
     this.spatialGridSystem = new SpatialGridSystem();
@@ -102,7 +102,13 @@ export class GameWorldManager<Events extends EventMap = CoreEvents> {
     this.fsmSystem = new FSMSystem();
     this.questSystem = new QuestSystem(this.world as any);
 
-    this.skillSystem = new SkillSystem(undefined, this.statModSystem);
+    this.skillSystem = new SkillSystem(
+      undefined,
+      this.statModSystem,
+      undefined,
+      this.statusEffectSystem,
+      this.random,
+    );
     this.combatSystem = new CombatSystem({
       random: this.random,
       rounding,

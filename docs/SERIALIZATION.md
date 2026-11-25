@@ -7,7 +7,7 @@ GameCore는 ECS의 특성(순수 데이터 컴포넌트)을 살려, 월드 전�
 ## 1. 기본 사용법
 
 ```ts
-import { WorldSerializer } from 'gamecore';
+import { WorldSerializer } from 'ryuis-gamecore';
 
 const serializer = new WorldSerializer();
 
@@ -45,7 +45,7 @@ serializer.deserialize(saveJson, targetWorld, { clearWorld: true });
 사용자가 새로 정의한 컴포넌트(`QuestComponent`, `RuneComponent` 등)도 `ComponentRegistry`에 등록하면 자동으로 세이브 파일에 포함됩니다.
 
 ```ts
-import { Component, defaultComponentRegistry } from 'gamecore';
+import { Component, defaultComponentRegistry } from 'ryuis-gamecore';
 
 class QuestComponent extends Component {
   questId: string = '';
@@ -67,3 +67,11 @@ defaultComponentRegistry.register(
 
 // 이제 toJSON() 호출 시 자동으로 QuestComponent도 저장되고 복원됩니다.
 ```
+
+---
+
+## 4. 기본 등록 컴포넌트 & `SaveManager`
+
+`defaultComponentRegistry`에는 `IdentityComponent`, `PositionComponent`, `StatsComponent`, `ExtendedStatsComponent`, `BarrierComponent`, `InventoryComponent`(`maxWeight` 포함), `EquipmentComponent`, `ProgressionComponent`, `TurnComponent`, `ClassComponent`, `LootComponent`, `FSMComponent`, `QuestsComponent`, `HierarchyComponent`, `StatusEffectsComponent`, `StatModsComponent`, `SkillsComponent`, `ItemDefComponent`가 기본 등록되어 있습니다.
+
+HMAC 무결성 서명 및 버전 마이그레이션이 필요한 경우 `SaveManager.serialize(world, secretKey, version, options)` / `SaveManager.deserialize(payload, world, secretKey, options)`를 사용하세요.

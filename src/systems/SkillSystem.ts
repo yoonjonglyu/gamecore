@@ -18,15 +18,14 @@ import { StatsComponent } from '../components/StatsComponent';
 import { ExtendedStatsComponent } from '../components/ExtendedStatsComponent';
 import { StatusEffectsComponent } from '../components/StatusEffectsComponent';
 import { ConstraintChecker } from '../constraints/ConstraintChecker';
-import { StatModsComponent, StatModifier } from '../components/StatModsComponent';
+import { StatModsComponent } from '../components/StatModsComponent';
 import { StatModSystem } from './StatModSystem';
+import { StatusEffectSystem } from './StatusEffectSystem';
+import { SeededRandom } from '../math/SeededRandom';
+import { createCue } from '../combat/CueProtocol';
 import {
   SkillDef,
   SkillEffectDef,
-  DamageEffect,
-  HealEffect,
-  StatusEffect,
-  StatModEffect,
 } from '../skills/SkillDef';
 
 import { SkillEffectExecutor, SkillEffectHandler } from '../skills/SkillEffectExecutor';
@@ -63,16 +62,22 @@ export class SkillSystem extends System<CoreEvents> {
    * StatModSystem 참조 — 주입 시 stat_mod 효과를 이 시스템으로 위임한다.
    */
   statModSystem?: StatModSystem;
+  statusEffectSystem?: StatusEffectSystem;
+  random?: SeededRandom;
 
   constructor(
     constraintChecker?: ConstraintChecker,
     statModSystem?: StatModSystem,
     executor?: SkillEffectExecutor,
+    statusEffectSystem?: StatusEffectSystem,
+    random?: SeededRandom,
   ) {
     super();
     this.constraintChecker = constraintChecker ?? new ConstraintChecker();
     this.statModSystem = statModSystem;
     this.executor = executor ?? new SkillEffectExecutor();
+    this.statusEffectSystem = statusEffectSystem;
+    this.random = random;
   }
 
   /** 커스텀 스킬 효과 등록 */
@@ -99,6 +104,11 @@ export class SkillSystem extends System<CoreEvents> {
     const stats = caster.get(StatsComponent);
     const ext = caster.get(ExtendedStatsComponent);
 
+    // 0. 패시브 스킬은 직접 시전 불가
+    if (skillDef.passive) {
+      return { ok: false, reason: 'passive', details: `Skill '${skillDef.id}' is passive` };
+    }
+
     // 1. 스킬 습득 여부 (SkillsComponent가 있는 경우)
     if (skills && !skills.knows(skillDef.id)) {
       return { ok: false, reason: 'no_skill', details: `Entity does not know skill '${skillDef.id}'` };
@@ -117,11 +127,14 @@ export class SkillSystem extends System<CoreEvents> {
 
     // 4. 자원(MP/기력) 확인
     if (skillDef.mpCost > 0) {
+      if (!stats && !ext) {
+        return { ok: false, reason: 'no_mp', details: `Required MP: ${skillDef.mpCost}, no stats component` };
+      }
       if (stats && stats.mp < skillDef.mpCost) {
         return { ok: false, reason: 'no_mp', details: `Required MP: ${skillDef.mpCost}, current: ${stats.mp}` };
       }
-      if (ext) {
-        const currentMp = ext.getResource('mp');
+      if (!stats && ext) {
+        const currentMp = ext.getResource('mp', 'maxMp');
         if (currentMp < skillDef.mpCost) {
           return { ok: false, reason: 'no_mp', details: `Required MP: ${skillDef.mpCost}, current: ${currentMp}` };
         }
@@ -205,6 +218,8 @@ export class SkillSystem extends System<CoreEvents> {
     skills?._startCooldown(skillDef.id);
 
     // 5. 효과 적용 (Damage, Heal, Buff, DoT 등)
+    const activeStatusSys = this.statusEffectSystem ?? caster.world?.getSystem?.(StatusEffectSystem);
+    const activeRng = this.random ?? caster.world?.random;
     for (const effect of skillDef.effects) {
       for (const target of finalTargets) {
         this.executor.execute(effect, {
@@ -212,8 +227,16 @@ export class SkillSystem extends System<CoreEvents> {
           target,
           skillDef,
           bus: this.bus,
+          random: activeRng,
+          statusEffectSystem: activeStatusSys,
         });
       }
+    }
+
+    // 연출(Cue) 연동
+    if (skillDef.cue) {
+      const cueEvt = createCue('skill:cast', skillDef.cue, caster.id, targetIds[0]);
+      this.bus.emit('cue:triggered', { cue: cueEvt });
     }
 
     // 6. 결과 이벤트 일괄 발행
@@ -238,20 +261,27 @@ export class SkillSystem extends System<CoreEvents> {
     };
   }
 
-  update(entities: Entity[], delta: number, mode: 'turn' | 'realtime' = 'realtime'): void {
+  update(entities: Entity[], delta: number, _mode: 'turn' | 'realtime' = 'realtime'): void {
     const entityMap = this._buildMap(entities);
+    // StatusEffectSystem이 함께 실행 중이면 이중 틱을 방지
+    const hasStatusSystem =
+      Boolean(this.statusEffectSystem) ||
+      entities.some((e) => Boolean(e.world?.hasSystem?.(StatusEffectSystem)));
 
-    // 1. 쿨다운 & 상태이상 틱
+    // 1. 쿨다운 & (단독 사용 시에만) 상태이상 틱
     for (const entity of entities) {
       this._tickCooldowns(entity, delta);
-      this._tickStatuses(entity, delta);
+      if (!hasStatusSystem) {
+        this._tickStatuses(entity, delta);
+      }
     }
 
     // 2. 큐에 쌓인 스킬 사용 요청 일괄 처리
-    for (const req of this._pending) {
+    const queue = this._pending;
+    this._pending = [];
+    for (const req of queue) {
       this._processUse(req, entityMap);
     }
-    this._pending = [];
   }
 
   // ──────────────────────────────────────────────
@@ -272,8 +302,26 @@ export class SkillSystem extends System<CoreEvents> {
     const statuses = entity.get(StatusEffectsComponent);
     if (!statuses) return;
 
+    const prevMap = new Map(statuses.all.map((s) => [s.id, s]));
     const expired = statuses._tick(delta);
+    const modsComp = entity.get(StatModsComponent);
+    const extComp = entity.get(ExtendedStatsComponent);
+
     for (const statusId of expired) {
+      const prevInst = prevMap.get(statusId);
+      if (prevInst?.linkedModSourceIds) {
+        for (const sourceId of prevInst.linkedModSourceIds) {
+          if (modsComp) {
+            const targetMod = modsComp.all.find((m) => m.sourceId === sourceId);
+            if (modsComp.remove(sourceId) && targetMod) {
+              this.bus.emit('stat_mod:expired', { entityId: entity.id, sourceId, stat: targetMod.stat });
+            }
+          }
+          if (extComp) {
+            extComp.removeModifiersBySource(sourceId);
+          }
+        }
+      }
       this.bus.emit('status:expired', { entityId: entity.id, statusId });
     }
   }

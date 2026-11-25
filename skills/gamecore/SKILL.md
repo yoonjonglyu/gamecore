@@ -9,7 +9,7 @@ description: >-
   and audio/VFX cue protocols), or integrating with React/Canvas/Node.js/Godot/Wasm.
 ---
 
-# GameCore Framework Skill (v1.1.0)
+# GameCore Framework Skill (v1.1.4)
 
 This skill guides the design, implementation, and extension of games built on the **GameCore** framework (`ryuis-gamecore` package).
 
@@ -36,8 +36,8 @@ GameCore is a platform-agnostic, deterministic, 0-dependency, ECS (Entity-Compon
 14. **Pluggable Combat Pipeline**: Decouple damage formulas via `DamageCalculator` strategy pattern and 4-stage lifecycle middlewares (`onPreHit`, `onDamageCalculate`, `onShieldAbsorb`, `onPostHit`). Shield damage is absorbed by `BarrierComponent` before deducting HP.
 15. **Offline Progress Calculation**: Use `OfflineProgressEngine` for idle/AFK gains with cap limits and multi-resource simulation.
 16. **Branching Dialogue (DialogueSession)**: Graph-based dialogue with condition evaluation against `world.blackboard` and automatic side-effect triggers.
-17. **2D Grid FOV & LOS (FieldOfView)**: Raycasting field-of-view, line-of-sight checks, and shadowcasting fog-of-war for roguelikes/tactics.
-18. **Modular Behavior Trees**: Compose reactive AI agents using `BehaviorTree`, `SelectorNode`, `SequenceNode`, `ActionNode`, and `ConditionNode`.
+17. **2D Grid FOV & LOS (FieldOfView)**: Bresenham raycasting field-of-view, line-of-sight checks, and fog-of-war for roguelikes/tactics.
+18. **Modular Behavior Trees**: Compose reactive AI agents using `BehaviorTreeRunner`, `SelectorNode`, `SequenceNode`, `ActionNode`, and `ConditionNode`.
 19. **Gacha & Pity Engine**: Deterministic gacha banner simulations with soft/hard pity counters and guaranteed banner rate-ups.
 20. **Delta Synchronization (WorldDiffer)**: Capture lightweight network delta snapshots (`added`, `updated`, `removed`, `blackboard`) for multiplayer replication and spectator syncing.
 21. **Entity Hierarchies (HierarchySystem)**: Parent-child attachments with local coordinate offsets (`offsetX`, `offsetY`) and optional cascading destruction (`cascadeDestroy`).
@@ -148,7 +148,7 @@ const nearby = spatialSys.queryRadius(heroPos.x, heroPos.y, 75);
 import { StatAdapter, StatsComponent } from 'ryuis-gamecore';
 
 const extended = StatAdapter.toExtended(entity.get(StatsComponent)!);
-extended.addModifier({ stat: 'attack', stage: 'flat', value: 10, sourceId: 'buff' });
+extended.addModifier({ stat: 'attack', flat: 10, sourceId: 'buff' });
 StatAdapter.syncToStats(extended, entity.get(StatsComponent)!);
 ```
 
@@ -162,80 +162,81 @@ world.resume();        // 게임 재개
 ### I. PRNG 상태 선택적 직렬화 & 커스텀 메타데이터
 ```ts
 // 메타데이터(가챠 천장, 퀘스트 기록 등)와 PRNG 상태를 단일 HMAC 세이브로 보관
-const saveJson = manager.save({
+const saveJson = manager.save(undefined, {
   includePrngState: true,
   metadata: { bannerPity: 45, chapter: 3 },
 });
 const result = manager.load(saveJson);
-console.log(result.metadata.bannerPity); // 45
+if (result.success && result.metadata) {
+  console.log(result.metadata.bannerPity); // 45
+}
 ```
 
 ### J. 오프라인 방치 보상 시뮬레이터 (OfflineProgressEngine)
 ```ts
 import { OfflineProgressEngine } from 'ryuis-gamecore';
 
-const engine = new OfflineProgressEngine({ maxOfflineMs: 8 * 3600 * 1000 });
-const progress = engine.calculate({
-  lastSaveTime: Date.now() - 3600 * 1000,
-  currentTime: Date.now(),
+const progress = OfflineProgressEngine.calculate({
+  lastTimestamp: Date.now() - 3600 * 1000,
+  currentTimestamp: Date.now(),
+  maxOfflineSeconds: 8 * 3600,
   rates: { gold: 10, wood: 2 }, // 초당 획득량
 });
-console.log(progress.rewards.gold); // 36000 Gold
+console.log(progress.accumulated.gold); // 36000 Gold
 ```
 
 ### K. 분기형 대화 시스템 (DialogueSession)
 ```ts
 import { DialogueSession } from 'ryuis-gamecore';
 
-const session = new DialogueSession({
-  tree: dialogueGraph,
-  blackboard: world.blackboard,
-});
-session.selectChoice(0); // 선택지 선택 시 블랙보드 플래그 자동 반영
+const session = new DialogueSession(dialogueGraph, world.blackboard);
+session.selectChoice('accept_quest'); // 선택지 선택 시 블랙보드 플래그/콜백 반영
 ```
 
 ### L. 시야 & 가시선 판정 (FieldOfView)
 ```ts
-import { FieldOfView } from 'ryuis-gamecore';
+import { FieldOfView, LineOfSight } from 'ryuis-gamecore';
 
-const fov = new FieldOfView({
-  width: 50,
-  height: 50,
-  isBlocking: (x, y) => dungeon.isWall(x, y),
-});
-const visibleCoords = fov.compute(heroX, heroY, 8); // 반경 8 시야각 계산
-const canSeeTarget = fov.hasLineOfSight(heroX, heroY, enemyX, enemyY);
+const visibleCoords = FieldOfView.compute(gridMap, heroX, heroY, 8); // 반경 8 시야각 계산
+const canSeeTarget = LineOfSight.hasLineOfSight(gridMap, heroX, heroY, enemyX, enemyY);
 ```
 
-### M. 행동 트리 AI (BehaviorTree)
+### M. 행동 트리 AI (BehaviorTreeRunner)
 ```ts
-import { BehaviorTree, SelectorNode, SequenceNode, ActionNode, ConditionNode } from 'ryuis-gamecore';
+import { BehaviorTreeRunner, SelectorNode, SequenceNode, ActionNode, ConditionNode } from 'ryuis-gamecore';
 
-const ai = new BehaviorTree(
+const ai = new BehaviorTreeRunner(
   new SelectorNode([
     new SequenceNode([
-      new ConditionNode((ctx) => ctx.hasEnemyInRange),
+      new ConditionNode((ctx) => Boolean(ctx.hasEnemyInRange)),
       new ActionNode((ctx) => ctx.attack()),
     ]),
     new ActionNode((ctx) => ctx.patrol()),
-  ])
+  ]),
+  context,
 );
-ai.tick(context);
+ai.tick(16);
 ```
 
 ### N. 확정 천장 가챠 엔진 (GachaEngine)
 ```ts
 import { GachaEngine } from 'ryuis-gamecore';
 
-const gacha = new GachaEngine({
-  baseProbability: 0.006, // 0.6% SSR
-  softPityStart: 74,
-  softPityIncrement: 0.06,
-  hardPity: 90,
-  rateUpItem: 'ssr_hero',
-  guaranteedRateUpOnSecond: true,
-});
-const pull = gacha.pull();
+const gacha = new GachaEngine([
+  {
+    id: 'standard',
+    tiers: [
+      { tier: 'SSR', baseRate: 0.006, items: ['ssr_std'], pickupItems: ['ssr_hero'] },
+      { tier: 'R', baseRate: 0.994, items: ['r_sword'] },
+    ],
+    softPityStart: 74,
+    softPityRateIncrease: 0.06,
+    hardPityCount: 90,
+    pickupRate: 0.5,
+    guaranteedNextPickup: true,
+  },
+]);
+const pull = gacha.pull('standard');
 ```
 
 ### O. 멀티플레이어 델타 동기화 (WorldDiffer)

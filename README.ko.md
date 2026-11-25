@@ -48,7 +48,7 @@
 │  │  - High-Level Skill Pipe  │    │  - CueProtocol (SFX/VFX 큐)     │  │
 │  │  - Status & Equipment     │    │  - SaveManager (HMAC-SHA256)    │  │
 │  │  - Turn Queue & Grid Move │    │  - WorldDiffer (델타 동기화)    │  │
-│  │  - HierarchySystem (부모자식)  │  - BehaviorTree & GachaEngine   │  │
+│  │  - HierarchySystem (부모자식)  │  - BehaviorTreeRunner & Gacha  │  │
 │  └───────────────────────────┘    └─────────────────────────────────┘  │
 └────────────────────────────────────────────────────────────────────────┘
 ```
@@ -73,7 +73,7 @@
 | **12) React 19 바인딩** | `ryuis-gamecore/react` | React 19 `useSyncExternalStore` 기반 무누수, 무티어링 렌더링 훅 (`useEntity`, `useComponent`, `useWorldEntities`). |
 | **13) 델타 동기화 엔진** | `WorldDiffer` | 이전 스냅샷과 비교하여 변경된 엔티티/컴포넌트만 경량 패치로 추출 및 1줄 동기화. 멀티플레이어 / 관전 모드 지원. |
 | **14) 엔티티 계층 구조** | `HierarchyComponent`, `HierarchySystem` | 펫/소환수, 탈것, 멀티파트 보스의 상대 오프셋 좌표 자동 추종 및 연쇄 삭제(`cascadeDestroy`). |
-| **15) 방치형 / 대화 / FOV / BT / 가챠** | `OfflineProgressEngine`, `DialogueSession`, `FieldOfView`, `BehaviorTree`, `GachaEngine` | 오프라인 누적 보상, 분기 대화, 타일맵 가시선/시야각, 복합 AI 판단 트리, 소프트/하드 천장 가챠. |
+| **15) 방치형 / 대화 / FOV / BT / 가챠** | `OfflineProgressEngine`, `DialogueSession`, `FieldOfView`, `BehaviorTreeRunner`, `GachaEngine` | 오프라인 누적 보상, 분기 대화, 타일맵 가시선/시야각, 복합 AI 판단 트리, 소프트/하드 천장 가챠. |
 
 ---
 
@@ -126,7 +126,7 @@ manager.update(16); // 16ms 틱
 
 ### 1. 세이브 데이터 PRNG 상태 선택적 직렬화 (`includePrngState`)
 ```ts
-const saveJson = manager.save({ includePrngState: true });
+const saveJson = manager.save(undefined, { includePrngState: true });
 const newManager = new GameWorldManager();
 newManager.load(saveJson);
 ```
@@ -188,6 +188,14 @@ if (serverHash !== clientHash) {
   console.warn('디싱크 감지! 델타 동기화 패치 요청 중...');
 }
 ```
+
+---
+
+## 🆕 v1.1.4 주요 개선 및 안정화 사항
+* **NodeNext ESM/CJS 듀얼 타입 선언 지원**: `exports`의 `"import"`(`.d.ts`/`.js`)와 `"require"`(`.d.cts`/`.cjs`) 조건을 분리하고, 상대 경로 확장자를 자동 보정하여 TypeScript `--moduleResolution NodeNext` 환경에서 즉시 동작합니다.
+* **`World.hash()` 정규화 및 `ComponentRegistry` 확장**: 모든 키를 재귀 코드포인트 순으로 정렬하고 삭제 대기 엔티티를 제외하며, `StatusEffectsComponent`, `StatModsComponent`, `SkillsComponent`, `ItemDefComponent`, `InventoryComponent.maxWeight` 직렬화를 지원합니다.
+* **`WorldDiffer` & `SaveManager` 보안/동기화 강화**: `WorldDiffer`가 엔티티 태그 변경(`updatedTags`)과 삭제된 블랙보드 키(`removedBlackboardKeys`)를 동기화하며, `SaveManager.deserialize()`는 기본적으로 v1.1.0/v1.1.1 레거시 서명을 차단(`allowLegacySignature: true` 시에만 허용)하고 다운그레이드 및 순환 마이그레이션을 방지합니다.
+* **전투·스킬·장비·상태이상·공간·AI 결정론 및 누수 수정**: `DefaultDamageCalculator` 마법 관통력(`magicPen`) 적용, `SkillSystem` + `StatusEffectSystem` 중복 틱 방지, `ExtendedStatsComponent` 기본 생존 상태(`hp: 100`) 수정, `MovementSystem` `mapId` 충돌 격리, `QuestsComponent`/`InventoryComponent` 비결정론적 타임스탬프/ID 제거, 리스너/스케줄러 메모리 누수 차단이 반영되었습니다.
 
 ---
 

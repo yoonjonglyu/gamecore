@@ -19,6 +19,10 @@ import { ExtendedStatsComponent } from '../components/ExtendedStatsComponent';
 import { FSMComponent } from '../components/FSMComponent';
 import { QuestsComponent } from '../components/QuestsComponent';
 import { HierarchyComponent } from '../components/HierarchyComponent';
+import { StatusEffectsComponent } from '../components/StatusEffectsComponent';
+import { StatModsComponent } from '../components/StatModsComponent';
+import { SkillsComponent } from '../components/SkillsComponent';
+import { ItemDefComponent } from '../components/ItemDefComponent';
 
 
 export type ComponentSerializer<T extends Component = Component> = (component: T) => Record<string, unknown>;
@@ -117,16 +121,20 @@ export class ComponentRegistry {
       (d) => new StatsComponent(d as any),
     );
 
-    // InventoryComponent (Map 변환)
+    // InventoryComponent (Map/weight 변환)
     this.register(
       'InventoryComponent',
       InventoryComponent,
       (c) => ({
         maxSlots: c.maxSlots,
+        maxWeight: c.maxWeight,
         items: c.items,
       }),
       (d) => {
-        const inv = new InventoryComponent((d.maxSlots as number) ?? 30);
+        const inv = new InventoryComponent({
+          maxSlots: (d.maxSlots as number) ?? 30,
+          maxWeight: d.maxWeight as number | undefined,
+        });
         const items = (d.items as Array<{ defId: string | number; quantity: number }>) ?? [];
         for (const item of items) {
           inv.add(item.defId, item.quantity);
@@ -259,6 +267,48 @@ export class ComponentRegistry {
           offsetY: d.offsetY as number | undefined,
           cascadeDestroy: d.cascadeDestroy as boolean | undefined,
         }),
+    );
+
+    // StatusEffectsComponent
+    this.register<StatusEffectsComponent>(
+      'StatusEffectsComponent',
+      StatusEffectsComponent,
+      (c) => c.toJSON() as unknown as Record<string, unknown>,
+      (d) => StatusEffectsComponent.fromJSON(d as any),
+    );
+
+    // StatModsComponent
+    this.register<StatModsComponent>(
+      'StatModsComponent',
+      StatModsComponent,
+      (c) => c.toJSON() as unknown as Record<string, unknown>,
+      (d) => StatModsComponent.fromJSON(d as any),
+    );
+
+    // SkillsComponent
+    this.register<SkillsComponent>(
+      'SkillsComponent',
+      SkillsComponent,
+      (c) => c.toJSON() as unknown as Record<string, unknown>,
+      (d) => SkillsComponent.fromJSON(d as any),
+    );
+
+    // ItemDefComponent
+    this.register<ItemDefComponent>(
+      'ItemDefComponent',
+      ItemDefComponent,
+      (c) => ({
+        id: c.id,
+        idx: c.idx,
+        name: c.name,
+        category: c.category,
+        stackLimit: c.stackLimit,
+        value: c.value,
+        spec: c.spec,
+        description: c.description,
+        constraints: c.constraints,
+      }),
+      (d) => new ItemDefComponent(d as any),
     );
   }
 }

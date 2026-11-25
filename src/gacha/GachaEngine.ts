@@ -116,14 +116,15 @@ export class GachaEngine {
 
     // 티어 롤링 (0~1)
     const roll = this._rng.next();
-    let selectedTier = pool.tiers[pool.tiers.length - 1]; // 기본 최하위
+    let selectedTier = pool.tiers.find((t) => t.baseRate > 0) ?? pool.tiers[pool.tiers.length - 1];
 
     let cumulative = 0;
     for (let i = 0; i < pool.tiers.length; i++) {
       const t = pool.tiers[i];
       const rate = i === 0 ? topRate : t.baseRate;
+      if (rate <= 0) continue;
       cumulative += rate;
-      if (roll <= cumulative) {
+      if (roll < cumulative) {
         selectedTier = t;
         break;
       }
@@ -135,11 +136,16 @@ export class GachaEngine {
 
     if (isTopTier) {
       const pickupRate = pool.pickupRate ?? 0.5;
-      const hasPickups = selectedTier.pickupItems && selectedTier.pickupItems.length > 0;
+      const hasPickups = Boolean(selectedTier.pickupItems && selectedTier.pickupItems.length > 0);
+      const hasStandard = selectedTier.items.length > 0;
+
+      if (!hasPickups && !hasStandard) {
+        throw new Error(`[GachaEngine] Top tier '${selectedTier.tier}' in pool '${poolId}' has no items configured.`);
+      }
 
       if (hasPickups) {
-        // 확천(guaranteed) 상태이거나 픽업 확률 롤 성공 시
-        if (pity.isGuaranteedPickup || this._rng.chance(pickupRate)) {
+        // 확천(guaranteed) 상태이거나 픽업 확률 롤 성공 시 (일반 아이템이 없으면 픽업으로 폴백)
+        if (!hasStandard || pity.isGuaranteedPickup || this._rng.chance(pickupRate)) {
           isPickUp = true;
           chosenItem = this._rng.pick(selectedTier.pickupItems!)!;
           pity.isGuaranteedPickup = false;
@@ -166,7 +172,12 @@ export class GachaEngine {
       };
     } else {
       // 일반 등급 아이템 추첨
-      chosenItem = this._rng.pick(selectedTier.items)!;
+      const fallbackItems =
+        selectedTier.items.length > 0 ? selectedTier.items : (selectedTier.pickupItems ?? []);
+      if (fallbackItems.length === 0) {
+        throw new Error(`[GachaEngine] Tier '${selectedTier.tier}' in pool '${poolId}' has no items configured.`);
+      }
+      chosenItem = this._rng.pick(fallbackItems)!;
       return {
         itemId: chosenItem,
         tier: selectedTier.tier,

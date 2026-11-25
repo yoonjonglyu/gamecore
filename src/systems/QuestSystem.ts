@@ -2,7 +2,11 @@ import type { World } from '../core/World';
 import type { CoreEvents } from '../events';
 import { QuestsComponent, type QuestInstance } from '../components/QuestsComponent';
 import { ProgressionComponent } from '../components/ProgressionComponent';
+import { ClassComponent } from '../components/ClassComponent';
 import { InventoryComponent } from '../components/InventoryComponent';
+import { StatsComponent } from '../components/StatsComponent';
+import { ExtendedStatsComponent } from '../components/ExtendedStatsComponent';
+import { StatModsComponent } from '../components/StatModsComponent';
 
 export class QuestSystem {
   private _world: World<CoreEvents>;
@@ -17,8 +21,16 @@ export class QuestSystem {
     // 몬스터 처치 이벤트 감지
     this._unsubscribers.push(
       this._world.events.on('stats:died', (data) => {
-        // 모든 퀘스트 소유 엔티티에 대해 'kill' 타입 목표 검사
-        this._handleGlobalQuestEvent('kill', 1, { targetId: data.entityId });
+        if (data.killerId !== undefined) {
+          this.advanceObjective(data.killerId, undefined, 'kill', 1, { targetId: data.entityId });
+        } else {
+          // killerId 미지정 시: 사망자 본인 제외 퀘스트 보유 엔티티 대상 검사
+          const entities = this._world.queryEntities([QuestsComponent]);
+          for (const entity of entities) {
+            if (entity.id === data.entityId) continue;
+            this.advanceObjective(entity.id, undefined, 'kill', 1, { targetId: data.entityId });
+          }
+        }
       })
     );
 
@@ -77,11 +89,11 @@ export class QuestSystem {
 
         if (!matches) continue;
 
-        // 메타데이터 필터 검증 (예: obj.metadata.targetId 와 filterMeta.targetId 비교)
-        if (filterMeta && obj.metadata) {
+        // 메타데이터 필터 검증 (목표가 요구한 모든 metadata 키가 filterMeta와 일치해야 함)
+        if (obj.metadata && Object.keys(obj.metadata).length > 0) {
           let filterFailed = false;
-          for (const key of Object.keys(filterMeta)) {
-            if (obj.metadata[key] !== undefined && obj.metadata[key] !== filterMeta[key]) {
+          for (const key of Object.keys(obj.metadata)) {
+            if (obj.metadata[key] !== undefined && filterMeta?.[key] !== obj.metadata[key]) {
               filterFailed = true;
               break;
             }
@@ -100,7 +112,7 @@ export class QuestSystem {
             completed: obj.completed,
           });
 
-          if (res.allCompleted) {
+          if (res.allCompleted && quest.state === 'completed') {
             this._world.events.emit('quest:completed', {
               entityId,
               questId: quest.id,
@@ -131,11 +143,38 @@ export class QuestSystem {
 
     const rewards = quest.rewards;
     if (rewards) {
-      // 1. 경험치 지급
+      // 1. 경험치 지급 (이벤트/성장 반영)
       if (rewards.exp && rewards.exp > 0) {
         const prog = entity.get(ProgressionComponent);
         if (prog) {
-          prog.addExp(rewards.exp);
+          const lvlRes = prog.addExp(rewards.exp);
+          this._world.events.emit('progression:exp_gained', {
+            entityId,
+            amount: rewards.exp,
+            currentExp: prog.currentExp,
+            requiredExp: prog.requiredExp,
+            level: prog.level,
+          });
+          if (lvlRes.leveledUp) {
+            const cls = entity.get(ClassComponent);
+            if (cls) cls.level = lvlRes.newLevel;
+            const stats = entity.get(StatsComponent);
+            const statsGained: Record<string, number> = {};
+            if (stats && prog.growth) {
+              if (prog.growth.maxHp) { stats.maxHp += prog.growth.maxHp * lvlRes.levelsGained; statsGained.maxHp = prog.growth.maxHp * lvlRes.levelsGained; }
+              if (prog.growth.maxMp) { stats.maxMp += prog.growth.maxMp * lvlRes.levelsGained; statsGained.maxMp = prog.growth.maxMp * lvlRes.levelsGained; }
+              if (prog.growth.attack) { stats.attack += prog.growth.attack * lvlRes.levelsGained; statsGained.attack = prog.growth.attack * lvlRes.levelsGained; }
+              if (prog.growth.defense) { stats.defense += prog.growth.defense * lvlRes.levelsGained; statsGained.defense = prog.growth.defense * lvlRes.levelsGained; }
+              if (prog.growth.speed) { stats.speed += prog.growth.speed * lvlRes.levelsGained; statsGained.speed = prog.growth.speed * lvlRes.levelsGained; }
+            }
+            this._world.events.emit('progression:levelup', {
+              entityId,
+              oldLevel: lvlRes.oldLevel,
+              newLevel: lvlRes.newLevel,
+              levelsGained: lvlRes.levelsGained,
+              statsGained,
+            });
+          }
         }
       }
 
@@ -144,7 +183,34 @@ export class QuestSystem {
         const inv = entity.get(InventoryComponent);
         if (inv) {
           for (const item of rewards.items) {
-            inv.add(item.itemId, item.quantity);
+            const ok = inv.add(item.itemId, item.quantity);
+            if (ok) {
+              this._world.events.emit('inventory:item:added', {
+                entityId,
+                defId: item.itemId,
+                quantity: item.quantity,
+              });
+            } else {
+              this._world.events.emit('inventory:full', { entityId });
+            }
+          }
+        }
+      }
+
+      // 3. 영구 스탯 보상 지급
+      if (rewards.stats) {
+        const mods = entity.get(StatModsComponent);
+        const ext = entity.get(ExtendedStatsComponent);
+        const stats = entity.get(StatsComponent);
+        for (const [stat, val] of Object.entries(rewards.stats)) {
+          if (typeof val !== 'number' || val === 0) continue;
+          const sourceId = `quest:${quest.id}:${stat}`;
+          if (ext) {
+            ext.addModifier({ sourceId, stat, flat: val });
+          } else if (mods) {
+            mods.add({ sourceId, stat, flat: val });
+          } else if (stats && stat in stats && typeof (stats as any)[stat] === 'number') {
+            (stats as any)[stat] += val;
           }
         }
       }

@@ -9,6 +9,7 @@ import { System } from '../core/System';
 import { CoreEvents } from '../events';
 import { ProgressionComponent } from '../components/ProgressionComponent';
 import { StatsComponent } from '../components/StatsComponent';
+import { ExtendedStatsComponent } from '../components/ExtendedStatsComponent';
 import { ClassComponent } from '../components/ClassComponent';
 
 export interface AddExpRequest {
@@ -70,6 +71,7 @@ export class ProgressionSystem extends System<CoreEvents> {
     newLevel: number,
   ): void {
     const stats = entity.get(StatsComponent);
+    const ext = entity.get(ExtendedStatsComponent);
     const growth = prog.growth;
 
     const statsGained: Record<string, number> = {};
@@ -101,9 +103,39 @@ export class ProgressionSystem extends System<CoreEvents> {
         statsGained.speed = gain;
       }
 
-      if (this.fullHealOnLevelUp) {
+      if (this.fullHealOnLevelUp && !stats.isDead) {
+        const prevHp = stats.hp;
         stats.hp = stats.maxHp;
         if (stats.maxMp) stats.mp = stats.maxMp;
+        if (stats.hp !== prevHp) {
+          this.bus.emit('stats:hp:changed', {
+            entityId: entity.id,
+            prev: prevHp,
+            next: stats.hp,
+            delta: stats.hp - prevHp,
+          });
+        }
+      }
+    } else if (ext) {
+      for (const [stat, perLevel] of Object.entries(growth)) {
+        if (typeof perLevel === 'number' && perLevel !== 0) {
+          const gain = perLevel * levelsGained;
+          ext.setBase(stat, ext.getBase(stat) + gain);
+          statsGained[stat] = gain;
+        }
+      }
+      if (this.fullHealOnLevelUp && !ext.isDead) {
+        const prevHp = ext.hp;
+        ext.setResource('hp', ext.maxHp, 'maxHp');
+        ext.setResource('mp', ext.maxMp, 'maxMp');
+        if (ext.hp !== prevHp) {
+          this.bus.emit('stats:hp:changed', {
+            entityId: entity.id,
+            prev: prevHp,
+            next: ext.hp,
+            delta: ext.hp - prevHp,
+          });
+        }
       }
     }
 

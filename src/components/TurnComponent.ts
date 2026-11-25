@@ -22,8 +22,8 @@ export class TurnComponent extends Component {
   constructor(props: TurnProps = {}) {
     super();
     this.initiative = props.initiative;
-    this.actionPoints = props.actionPoints ?? 1;
     this.maxActionPoints = props.maxActionPoints ?? 1;
+    this.actionPoints = props.actionPoints ?? this.maxActionPoints;
   }
 
   /** 턴 시작 시 행동력 리셋 */
@@ -33,6 +33,7 @@ export class TurnComponent extends Component {
 
   /** 행동력 소비 */
   consumeAP(amount: number = 1): boolean {
+    if (amount < 0) return false;
     if (this.actionPoints >= amount) {
       this.actionPoints -= amount;
       return true;

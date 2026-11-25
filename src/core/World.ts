@@ -12,6 +12,7 @@ import { SeededRandom } from '../math/SeededRandom';
 import { Blackboard } from './Blackboard';
 import { TimerScheduler, ScheduledTask } from './TimerScheduler';
 import { sha256 } from '../serialization/crypto';
+import { defaultComponentRegistry } from '../serialization/ComponentRegistry';
 
 export type QueryCacheMode = 'auto' | 'always';
 
@@ -67,6 +68,7 @@ export class World<Events extends EventMap = EventMap> implements EntityWorldEmi
   /** 월드 상태 버전 카운터 (React 바인딩 등 스냅샷 비교용) */
   version: number = 0;
   private _listeners: Set<WorldListener> = new Set();
+  private _bbUnsub?: () => void;
 
   constructor(busOrOptions?: EventBus<Events> | WorldOptions<Events>, seed?: number | string) {
     if (busOrOptions && 'emit' in busOrOptions && typeof (busOrOptions as any).emit === 'function') {
@@ -81,7 +83,9 @@ export class World<Events extends EventMap = EventMap> implements EntityWorldEmi
       this.blackboard = opts.blackboard ?? new Blackboard();
       this.scheduler = opts.scheduler ?? new TimerScheduler();
       if (opts.queryCacheMode) this.queryCacheMode = opts.queryCacheMode;
-      if (opts.timeScale !== undefined) this.timeScale = opts.timeScale;
+      if (opts.timeScale !== undefined) {
+        this.timeScale = Number.isFinite(opts.timeScale) ? Math.max(0, opts.timeScale) : 1.0;
+      }
       if (opts.isPaused !== undefined) this.isPaused = opts.isPaused;
     } else {
       this.bus = new EventBus<Events>();
@@ -91,7 +95,7 @@ export class World<Events extends EventMap = EventMap> implements EntityWorldEmi
     }
 
     // 전역 블랙보드 변경 시 버스로 이벤트 전파
-    this.blackboard.subscribe((key, prev, next) => {
+    this._bbUnsub = this.blackboard.subscribe((key, prev, next) => {
       (this.bus as any).emit('blackboard:changed', { key, prev, next });
     });
   }
@@ -104,7 +108,7 @@ export class World<Events extends EventMap = EventMap> implements EntityWorldEmi
    * 게임 월드의 시간 진행 배속을 설정합니다 (예: 1.0 = 정상, 2.0 = 2배속, 0.5 = 슬로우모션).
    */
   setTimeScale(scale: number): this {
-    this.timeScale = Math.max(0, scale);
+    this.timeScale = Number.isFinite(scale) ? Math.max(0, scale) : this.timeScale;
     return this;
   }
 
@@ -194,7 +198,7 @@ export class World<Events extends EventMap = EventMap> implements EntityWorldEmi
 
   notifyChange(event: WorldChangeEvent): void {
     this.version++;
-    for (const listener of this._listeners) {
+    for (const listener of Array.from(this._listeners)) {
       listener(this, event);
     }
   }
@@ -221,7 +225,8 @@ export class World<Events extends EventMap = EventMap> implements EntityWorldEmi
   }
 
   emitComponentUpdated(entityId: number, componentName: string, component: Component): void {
-    this._isCacheDirty = true;
+    this.invalidateCache();
+    this.notifyChange({ type: 'component_changed', entity: this._entities.get(entityId) });
     if (this._isBatching) {
       const key = `${entityId}:${componentName}`;
       this._batchedComponentRemovals.delete(key);
@@ -232,7 +237,8 @@ export class World<Events extends EventMap = EventMap> implements EntityWorldEmi
   }
 
   emitComponentRemoved(entityId: number, componentName: string): void {
-    this._isCacheDirty = true;
+    this.invalidateCache();
+    this.notifyChange({ type: 'component_changed', entity: this._entities.get(entityId) });
     if (this._isBatching) {
       const key = `${entityId}:${componentName}`;
       this._batchedComponentUpdates.delete(key);
@@ -243,15 +249,17 @@ export class World<Events extends EventMap = EventMap> implements EntityWorldEmi
   }
 
   private _flushBatchedEvents(): void {
-    for (const update of this._batchedComponentUpdates.values()) {
+    const updates = Array.from(this._batchedComponentUpdates.values());
+    this._batchedComponentUpdates.clear();
+    const removals = Array.from(this._batchedComponentRemovals.values());
+    this._batchedComponentRemovals.clear();
+
+    for (const update of updates) {
       (this.bus as any).emit('ecs:component:updated', update);
     }
-    this._batchedComponentUpdates.clear();
-
-    for (const removal of this._batchedComponentRemovals.values()) {
+    for (const removal of removals) {
       (this.bus as any).emit('ecs:component:removed', removal);
     }
-    this._batchedComponentRemovals.clear();
   }
 
   // ──────────────────────────────────────────────
@@ -271,6 +279,12 @@ export class World<Events extends EventMap = EventMap> implements EntityWorldEmi
    * 지정된 고유 ID로 엔티티를 생성합니다 (역직렬화 및 델타 동기화용).
    */
   createEntityWithId(id: number, ...tags: string[]): Entity {
+    this._pendingRemove.delete(id);
+    const existing = this._entities.get(id);
+    if (existing) {
+      existing._bindWorld(undefined);
+      existing.clearListeners();
+    }
     const entity = new Entity(tags, id);
     entity._bindWorld(this);
     this._entities.set(entity.id, entity);
@@ -298,6 +312,7 @@ export class World<Events extends EventMap = EventMap> implements EntityWorldEmi
   clearEntities(): void {
     for (const entity of this._entities.values()) {
       entity.clear();
+      entity._bindWorld(undefined);
     }
     this._entities.clear();
     this._pendingRemove.clear();
@@ -371,6 +386,9 @@ export class World<Events extends EventMap = EventMap> implements EntityWorldEmi
   // ──────────────────────────────────────────────
 
   addSystem(system: System<Events>): this {
+    if (this._systems.includes(system)) {
+      return this;
+    }
     system._init(this.bus);
     this._systems.push(system);
     // 우선순위(priority) 높은 순 정렬
@@ -380,9 +398,19 @@ export class World<Events extends EventMap = EventMap> implements EntityWorldEmi
   }
 
   removeSystem(system: System<Events>): void {
+    const idx = this._systems.indexOf(system);
+    if (idx === -1) return;
     system.onDestroy?.();
-    this._systems = this._systems.filter((s) => s !== system);
+    this._systems.splice(idx, 1);
     this._queryCache.delete(system);
+  }
+
+  hasSystem<T extends System<Events>>(systemClass: new (...args: any[]) => T): boolean {
+    return this._systems.some((s) => s instanceof systemClass);
+  }
+
+  getSystem<T extends System<Events>>(systemClass: new (...args: any[]) => T): T | undefined {
+    return this._systems.find((s): s is T => s instanceof systemClass);
   }
 
   // ──────────────────────────────────────────────
@@ -399,12 +427,16 @@ export class World<Events extends EventMap = EventMap> implements EntityWorldEmi
       return;
     }
 
-    const effectiveDelta = mode === 'realtime' ? delta * this.timeScale : delta;
+    const rawDelta = Number.isFinite(delta) ? Math.max(0, delta) : 0;
+    const effectiveDelta = mode === 'realtime' ? rawDelta * this.timeScale : rawDelta;
+
+    // 지연 삭제 처리 (스케줄러 콜백 전에 먼저 플러시하여 이미 삭제된 엔티티 참조 방지)
+    this._flushRemovals();
 
     // 스케줄러 틱 실행 (시간 또는 턴)
     this.scheduler.update(effectiveDelta, mode === 'turn' ? 'turn' : 'time');
 
-    // 지연 삭제 처리
+    // 스케줄러 콜백에서 삭제 예약된 엔티티가 있을 수 있으므로 재플러시
     this._flushRemovals();
 
     // 쿼리 캐시 갱신 (always 모드이거나 dirty 플래그 활성화 시)
@@ -413,17 +445,31 @@ export class World<Events extends EventMap = EventMap> implements EntityWorldEmi
       this._isCacheDirty = false;
     }
 
-    for (const system of this._systems) {
+    for (const system of [...this._systems]) {
       if (!system.enabled) continue; // 일시정지된 시스템 스킵
+      if (this._isCacheDirty) {
+        this._rebuildQueryCache();
+        this._isCacheDirty = false;
+      }
       const entities = this._queryCache.get(system) ?? [];
       system.update(entities, effectiveDelta, mode);
     }
   }
 
   destroy(): void {
+    this._bbUnsub?.();
+    this._bbUnsub = undefined;
+    this.scheduler.clear();
     this._systems.forEach((s) => s.onDestroy?.());
     this._systems = [];
+    for (const entity of this._entities.values()) {
+      entity._bindWorld(undefined);
+      entity.clearListeners();
+    }
     this._entities.clear();
+    this._pendingRemove.clear();
+    this._batchedComponentUpdates.clear();
+    this._batchedComponentRemovals.clear();
     this._queryCache.clear();
     this._listeners.clear();
     this.bus.clear();
@@ -454,14 +500,17 @@ export class World<Events extends EventMap = EventMap> implements EntityWorldEmi
 
   private _flushRemovals(): void {
     if (this._pendingRemove.size === 0) return;
-    for (const id of this._pendingRemove) {
+    const toRemove = Array.from(this._pendingRemove);
+    this._pendingRemove.clear();
+    for (const id of toRemove) {
       const entity = this._entities.get(id);
       if (entity) {
+        entity._bindWorld(undefined);
+        entity.clearListeners();
         this._entities.delete(id);
         this.notifyChange({ type: 'entity_removed', entity });
       }
     }
-    this._pendingRemove.clear();
     this.invalidateCache();
   }
 
@@ -473,54 +522,88 @@ export class World<Events extends EventMap = EventMap> implements EntityWorldEmi
   hash(options?: { includePrngState?: boolean }): string {
     const includePrng = options?.includePrngState ?? true;
 
-    // 1. 엔티티 정렬 및 컴포넌트 정규화
-    const sortedEntityIds = Array.from(this._entities.keys()).sort((a, b) => a - b);
+    const compareCodePoint = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
+
+    const canonicalize = (val: unknown): unknown => {
+      if (val === null || val === undefined) return val;
+      if (typeof val === 'bigint') return val.toString();
+      if (typeof val !== 'object') return val;
+      if (Array.isArray(val)) {
+        return val.map((item) => canonicalize(item));
+      }
+      if (val instanceof Set) {
+        return Array.from(val)
+          .map((item) => canonicalize(item))
+          .sort((a, b) => compareCodePoint(JSON.stringify(a) ?? '', JSON.stringify(b) ?? ''));
+      }
+      if (val instanceof Map) {
+        return Array.from(val.entries())
+          .map(([k, v]) => [String(k), canonicalize(v)] as [string, unknown])
+          .sort((a, b) => compareCodePoint(a[0], b[0]));
+      }
+      const record = val as Record<string, unknown>;
+      const sortedObj: Record<string, unknown> = {};
+      for (const k of Object.keys(record).sort(compareCodePoint)) {
+        const v = record[k];
+        if (typeof v !== 'function' && v !== undefined) {
+          sortedObj[k] = canonicalize(v);
+        }
+      }
+      return sortedObj;
+    };
+
+    // 1. 엔티티 정렬 및 컴포넌트 정규화 (삭제 대기 제외)
+    const sortedEntityIds = Array.from(this._entities.keys())
+      .filter((id) => !this._pendingRemove.has(id))
+      .sort((a, b) => a - b);
+
     const entitiesSummary = sortedEntityIds.map((id) => {
       const ent = this._entities.get(id)!;
-      const comps = ent.allComponents.map((c) => {
-        const typeName = c.constructor.name;
-        const plainData: Record<string, any> = {};
-        for (const key of Object.keys(c).sort()) {
-          if (!key.startsWith('_') && key !== 'entity' && key !== 'entityId') {
-            plainData[key] = (c as any)[key];
+      const comps = ent.allComponents
+        .map((c) => {
+          const serialized = defaultComponentRegistry.serializeComponent(c);
+          if (serialized) {
+            return {
+              type: serialized.type,
+              data: canonicalize(serialized.data),
+            };
           }
-        }
-        return { type: typeName, data: plainData };
-      }).sort((a, b) => a.type.localeCompare(b.type));
+          const typeName = c.constructor.name;
+          const plainData: Record<string, unknown> = {};
+          for (const key of Object.keys(c).sort(compareCodePoint)) {
+            if (!key.startsWith('_') && key !== 'entity' && key !== 'entityId') {
+              plainData[key] = (c as any)[key];
+            }
+          }
+          return { type: typeName, data: canonicalize(plainData) };
+        })
+        .sort((a, b) => compareCodePoint(a.type, b.type));
 
       return {
         id: ent.id,
-        tags: Array.from(ent.tags).sort(),
+        tags: Array.from(ent.tags).sort(compareCodePoint),
         components: comps,
       };
     });
 
     // 2. 블랙보드 정규화
-    const bbRecord = this.blackboard.toRecord();
-    const bbObj: Record<string, any> = {};
-    const bbKeys = Object.keys(bbRecord).sort();
-    for (const k of bbKeys) {
-      bbObj[k] = bbRecord[k];
-    }
+    const bbObj = canonicalize(this.blackboard.toRecord());
 
     // 3. PRNG 상태 (선택)
-    const prng = includePrng ? this.random.exportState() : null;
+    const prng = includePrng ? canonicalize(this.random.exportState()) : null;
 
-    const canonicalPayload = JSON.stringify(
-      {
-        entities: entitiesSummary,
-        blackboard: bbObj,
-        prng,
-      },
-      (_, v) => (typeof v === 'bigint' ? v.toString() : v),
-    );
+    const canonicalPayload = JSON.stringify({
+      entities: entitiesSummary,
+      blackboard: bbObj,
+      prng,
+    });
 
     return sha256(canonicalPayload);
   }
 }
 
 export interface WorldChangeEvent {
-  type: 'entity_created' | 'entity_removed' | 'entities_cleared';
+  type: 'entity_created' | 'entity_removed' | 'entities_cleared' | 'component_changed';
   entity?: Entity;
 }
 

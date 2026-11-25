@@ -20,6 +20,8 @@ export interface BTContext {
 
 export abstract class BTNode {
   abstract execute(context: BTContext): NodeStatus;
+
+  reset(): void {}
 }
 
 // ──────────────────────────────────────────────
@@ -100,17 +102,32 @@ export class InverterNode extends BTNode {
  * 자식을 지정된 횟수(count)만큼 반복 실행.
  */
 export class RepeatNode extends BTNode {
+  private _currentIteration = 0;
+
   constructor(readonly child: BTNode, readonly count: number = 1) {
     super();
   }
 
   execute(context: BTContext): NodeStatus {
-    for (let i = 0; i < this.count; i++) {
+    const targetCount = Math.max(0, Math.floor(this.count));
+    while (this._currentIteration < targetCount) {
       const status = this.child.execute(context);
-      if (status === 'FAILURE') return 'FAILURE';
-      if (status === 'RUNNING') return 'RUNNING';
+      if (status === 'FAILURE') {
+        this._currentIteration = 0;
+        return 'FAILURE';
+      }
+      if (status === 'RUNNING') {
+        return 'RUNNING';
+      }
+      this._currentIteration++;
     }
+    this._currentIteration = 0;
     return 'SUCCESS';
+  }
+
+  reset(): void {
+    this._currentIteration = 0;
+    this.child.reset();
   }
 }
 

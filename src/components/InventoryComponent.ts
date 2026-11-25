@@ -40,6 +40,7 @@ export interface InventoryOptions {
 
 export class InventoryComponent extends Component {
   private _slots: ItemEntry[] = [];
+  private _nextSlotId = 1;
   readonly maxSlots: number;
   maxWeight?: number;
 
@@ -136,7 +137,8 @@ export class InventoryComponent extends Component {
     if (quantity <= 0) return true;
 
     const meta = options?.metaLookup ? options.metaLookup(defId) : undefined;
-    const maxStack = options?.maxStack ?? meta?.maxStack ?? Infinity;
+    const rawMaxStack = options?.maxStack ?? meta?.maxStack ?? Infinity;
+    const maxStack = rawMaxStack <= 0 ? 1 : rawMaxStack;
     const itemWeight = meta?.weight ?? 0;
 
     // 무게 제한 검사
@@ -148,45 +150,55 @@ export class InventoryComponent extends Component {
       }
     }
 
-    let remainingToAdd = quantity;
-
-    // 1. 기존 슬롯 중 공간이 남아있는 동일 아이템 슬롯에 먼저 채우기
-    if (maxStack < Infinity) {
-      for (const slot of this._slots) {
-        if (slot.defId === defId && slot.quantity < maxStack) {
-          const available = maxStack - slot.quantity;
-          const toAdd = Math.min(available, remainingToAdd);
-          slot.quantity += toAdd;
-          remainingToAdd -= toAdd;
-          if (remainingToAdd <= 0) break;
-        }
+    // 1. 원자적(Atomic) 수용 가능 여부 선검증 — 부분 변이 방지
+    if (maxStack === Infinity) {
+      const hasExisting = this._slots.some((s) => s.defId === defId);
+      if (!hasExisting && this._slots.length + 1 > this.maxSlots) {
+        return false;
       }
-    } else {
-      // maxStack 제한이 없는 기본 모드: 기존 단일 슬롯에 전부 누적
       const existing = this._slots.find((s) => s.defId === defId);
       if (existing) {
-        existing.quantity += remainingToAdd;
+        existing.quantity += quantity;
         return true;
       }
-    }
-
-    if (remainingToAdd <= 0) {
+      this._slots.push({
+        slotId: `slot_${this._nextSlotId++}`,
+        defId,
+        quantity,
+      });
       return true;
     }
 
-    // 2. 남은 수량을 채울 새 슬롯 개수 산출 및 슬롯 제한 검사
-    const slotsNeeded =
-      maxStack < Infinity ? Math.ceil(remainingToAdd / maxStack) : 1;
+    let addableToExisting = 0;
+    for (const slot of this._slots) {
+      if (slot.defId === defId && slot.quantity < maxStack) {
+        addableToExisting += maxStack - slot.quantity;
+      }
+    }
 
+    const overflow = Math.max(0, quantity - addableToExisting);
+    const slotsNeeded = overflow > 0 ? Math.ceil(overflow / maxStack) : 0;
     if (this._slots.length + slotsNeeded > this.maxSlots) {
       return false;
+    }
+
+    // 2. 기존 슬롯에 먼저 채우기
+    let remainingToAdd = quantity;
+    for (const slot of this._slots) {
+      if (slot.defId === defId && slot.quantity < maxStack) {
+        const available = maxStack - slot.quantity;
+        const toAdd = Math.min(available, remainingToAdd);
+        slot.quantity += toAdd;
+        remainingToAdd -= toAdd;
+        if (remainingToAdd <= 0) break;
+      }
     }
 
     // 3. 새 슬롯 추가
     while (remainingToAdd > 0) {
       const toAdd = Math.min(maxStack, remainingToAdd);
       this._slots.push({
-        slotId: `slot_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+        slotId: `slot_${this._nextSlotId++}`,
         defId,
         quantity: toAdd,
       });
@@ -241,13 +253,14 @@ export class InventoryComponent extends Component {
 
     for (const [defId, totalQty] of itemTotals.entries()) {
       const meta = metaLookup ? metaLookup(defId) : undefined;
-      const maxStack = meta?.maxStack ?? Infinity;
+      const rawMaxStack = meta?.maxStack ?? Infinity;
+      const maxStack = rawMaxStack <= 0 ? 1 : rawMaxStack;
 
       let remaining = totalQty;
       while (remaining > 0) {
         const take = Math.min(maxStack, remaining);
         newSlots.push({
-          slotId: `slot_${newSlots.length}`,
+          slotId: `slot_${this._nextSlotId++}`,
           defId,
           quantity: take,
         });
@@ -285,9 +298,31 @@ export class InventoryComponent extends Component {
         case 'quantity':
           return mult * (a.quantity - b.quantity);
         case 'rarity': {
-          const rA = Number(metaA?.rarity ?? 0);
-          const rB = Number(metaB?.rarity ?? 0);
-          return mult * (rA - rB);
+          const rarityOrder: Record<string, number> = {
+            common: 1,
+            uncommon: 2,
+            rare: 3,
+            epic: 4,
+            legendary: 5,
+            mythic: 6,
+          };
+          const parseRarity = (val: number | string | undefined): number | string => {
+            if (typeof val === 'number') return val;
+            if (typeof val === 'string') {
+              const num = Number(val);
+              if (val.trim() !== '' && Number.isFinite(num)) return num;
+              const mapped = rarityOrder[val.toLowerCase()];
+              if (mapped !== undefined) return mapped;
+              return val;
+            }
+            return 0;
+          };
+          const rA = parseRarity(metaA?.rarity);
+          const rB = parseRarity(metaB?.rarity);
+          if (typeof rA === 'number' && typeof rB === 'number') {
+            return mult * (rA - rB);
+          }
+          return mult * String(rA).localeCompare(String(rB));
         }
         case 'name': {
           const nA = metaA?.name ?? String(a.defId);

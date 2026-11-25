@@ -139,17 +139,45 @@ export class EquipmentSystem extends System<CoreEvents> {
       }
     }
 
-    // 4. 장착 교체 처리 (먼저 새 장비를 인벤토리에서 차감하고 기존 장비를 환원)
+    // 4. 장착 교체 처리 (원자적 인벤토리 공간 확인 후 기존 장비 환원)
     const prevItem = eq.getSlot(req.slot);
-    if (prevItem) {
-      this._removeEquipMods(entity, req.slot);
-      eq.unequip(req.slot);
-    }
+    const metaLookup = (defId: string | number) => {
+      const def = this.data.items.get(defId);
+      if (!def) return undefined;
+      return {
+        id: def.id,
+        name: def.name,
+        category: def.category,
+        maxStack: def.stackLimit,
+        value: def.value,
+      };
+    };
 
+    const reqDefMeta = metaLookup(req.itemId);
     inv.remove(req.itemId, 1);
 
     if (prevItem) {
-      inv.add(prevItem.defId, 1);
+      const prevReturned = inv.add(prevItem.defId, 1, {
+        maxStack: metaLookup(prevItem.defId)?.maxStack,
+        metaLookup,
+      });
+      if (!prevReturned) {
+        // 공간 부족 시 새 아이템 차감 원복 후 교체 실패 처리
+        inv.add(req.itemId, 1, {
+          maxStack: reqDefMeta?.maxStack,
+          metaLookup,
+        });
+        this.bus.emit('equipment:failed', {
+          entityId: req.entityId,
+          slot: req.slot,
+          itemId: req.itemId,
+          reason: 'inventory_full',
+        });
+        return;
+      }
+
+      this._removeEquipMods(entity, req.slot);
+      eq.unequip(req.slot);
       this.bus.emit('equipment:unequipped', {
         entityId: req.entityId,
         slot: req.slot,
@@ -185,25 +213,37 @@ export class EquipmentSystem extends System<CoreEvents> {
     const current = eq.getSlot(req.slot);
     if (!current) return;
 
-    // 인벤토리가 존재하고 꽉 찼으면 해제 불가
-    if (inv && inv.isFull) {
-      this.bus.emit('equipment:failed', {
-        entityId: req.entityId,
-        slot: req.slot,
-        itemId: current.defId,
-        reason: 'inventory_full',
+    // 1. 인벤토리 환원 시도 (스택 가능 여부에 따라 isFull 상태여도 기존 슬롯에 적재 가능)
+    if (inv) {
+      const metaLookup = (defId: string | number) => {
+        const def = this.data.items.get(defId);
+        if (!def) return undefined;
+        return {
+          id: def.id,
+          name: def.name,
+          category: def.category,
+          maxStack: def.stackLimit,
+          value: def.value,
+        };
+      };
+      const added = inv.add(current.defId, 1, {
+        maxStack: metaLookup(current.defId)?.maxStack,
+        metaLookup,
       });
-      return;
+      if (!added) {
+        this.bus.emit('equipment:failed', {
+          entityId: req.entityId,
+          slot: req.slot,
+          itemId: current.defId,
+          reason: 'inventory_full',
+        });
+        return;
+      }
     }
 
-    // 1. 슬롯에서 제거 & 모디파이어 제거
+    // 2. 슬롯에서 제거 & 모디파이어 제거
     eq.unequip(req.slot);
     this._removeEquipMods(entity, req.slot);
-
-    // 2. 인벤토리에 환원
-    if (inv) {
-      inv.add(current.defId, 1);
-    }
 
     this.bus.emit('equipment:unequipped', {
       entityId: req.entityId,
@@ -236,7 +276,7 @@ export class EquipmentSystem extends System<CoreEvents> {
 
     for (const [stat, val] of Object.entries(spec)) {
       if (excludedKeys.has(stat)) continue;
-      if (typeof val === 'number' && val !== 0) {
+      if (typeof val === 'number' && val !== 0 && (modsComp || extStats)) {
         const sourceId = `equip:${slot}:${stat}`;
         if (modsComp) {
           modsComp.add({
@@ -268,10 +308,13 @@ export class EquipmentSystem extends System<CoreEvents> {
     const extStats = entity.get(ExtendedStatsComponent);
 
     const prefix = `equip:${slot}:`;
+    const emitted = new Set<string>();
+
     if (modsComp) {
       const toRemove = modsComp.all.filter((m) => m.sourceId.startsWith(prefix));
       for (const mod of toRemove) {
         modsComp.remove(mod.sourceId);
+        emitted.add(mod.sourceId);
         this.bus.emit('stat_mod:removed', {
           entityId: entity.id,
           sourceId: mod.sourceId,
@@ -281,7 +324,17 @@ export class EquipmentSystem extends System<CoreEvents> {
     }
 
     if (extStats) {
+      const toRemove = extStats.pipeline.getAllModifiers().filter((m) => m.sourceId.startsWith(prefix));
       extStats.removeModifiersBySource(prefix);
+      for (const mod of toRemove) {
+        if (!emitted.has(mod.sourceId)) {
+          this.bus.emit('stat_mod:removed', {
+            entityId: entity.id,
+            sourceId: mod.sourceId,
+            stat: mod.stat,
+          });
+        }
+      }
     }
   }
 }

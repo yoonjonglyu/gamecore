@@ -24,6 +24,7 @@ export class MovementSystem extends System<CoreEvents> {
 
   constructor(map?: GridMap) {
     super();
+    this.priority = 20;
     this.map = map;
   }
 
@@ -46,9 +47,11 @@ export class MovementSystem extends System<CoreEvents> {
   update(entities: Entity[], _delta: number): void {
     if (this._pending.length === 0) return;
 
+    const pending = this._pending;
+    this._pending = [];
     const entityMap = new Map(entities.map((e) => [e.id, e]));
 
-    for (const req of this._pending) {
+    for (const req of pending) {
       const entity = entityMap.get(req.entityId);
       if (!entity) continue;
 
@@ -90,7 +93,13 @@ export class MovementSystem extends System<CoreEvents> {
       const isBlockedByEntity = entities.some((other) => {
         if (other.id === entity.id) return false;
         const otherPos = other.get(PositionComponent);
-        return otherPos && otherPos.isBlocked && otherPos.x === targetX && otherPos.y === targetY;
+        return (
+          otherPos &&
+          otherPos.isBlocked &&
+          otherPos.mapId === pos.mapId &&
+          otherPos.x === targetX &&
+          otherPos.y === targetY
+        );
       });
 
       if (isBlockedByEntity) {
@@ -116,7 +125,5 @@ export class MovementSystem extends System<CoreEvents> {
         toY: targetY,
       });
     }
-
-    this._pending = [];
   }
 }

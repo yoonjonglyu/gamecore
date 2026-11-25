@@ -61,6 +61,7 @@ export class StatusEffectSystem extends System<CoreEvents> {
     stacks = 1,
     maxStacks = 1,
     options?: ApplyStatusOptions,
+    _reactionDepth = 0,
   ): void {
     let statusComp = entity.get(StatusEffectsComponent);
     if (!statusComp) {
@@ -68,9 +69,9 @@ export class StatusEffectSystem extends System<CoreEvents> {
       entity.add(statusComp);
     }
 
-    // ── 원소/상태 상호작용 (Elemental / Status Reaction) 검사 ──
+    // ── 원소/상태 상호작용 (Elemental / Status Reaction) 검사 (순환 재귀 깊이 제한) ──
     const existingIds = statusComp.all.map((s) => s.id);
-    const matched = this.reactionRegistry.findMatchingRule(statusId, existingIds);
+    const matched = _reactionDepth < 8 ? this.reactionRegistry.findMatchingRule(statusId, existingIds) : undefined;
 
     if (matched) {
       const { rule, existingStatusId } = matched;
@@ -129,6 +130,7 @@ export class StatusEffectSystem extends System<CoreEvents> {
           rule.resultStatus.stacks ?? 1,
           rule.resultStatus.maxStacks ?? 1,
           { tickDamage: rule.resultStatus.tickDamage },
+          _reactionDepth + 1,
         );
       }
 
@@ -218,14 +220,17 @@ export class StatusEffectSystem extends System<CoreEvents> {
       return;
     }
 
-    this.bus.emit('stats:hp:changed', {
-      entityId: entity.id,
-      prev: prevHp,
-      next: nextHp,
-      delta: -damage,
-    });
+    const actualDelta = nextHp - prevHp;
+    if (actualDelta !== 0) {
+      this.bus.emit('stats:hp:changed', {
+        entityId: entity.id,
+        prev: prevHp,
+        next: nextHp,
+        delta: actualDelta,
+      });
+    }
 
-    if (nextHp <= 0) {
+    if (nextHp <= 0 && prevHp > 0) {
       this.bus.emit('stats:died', { entityId: entity.id, killerId: sourceEntityId });
     }
   }
@@ -241,7 +246,7 @@ export class StatusEffectSystem extends System<CoreEvents> {
     if (!inst) return false;
 
     // 연동된 스탯 모디파이어 롤백
-    this._rollbackLinkedMods(entity, inst);
+    this._rollbackLinkedMods(entity, inst, true);
 
     statusComp.remove(statusId);
     this.bus.emit('status:removed', { entityId: entity.id, statusId });
@@ -302,25 +307,27 @@ export class StatusEffectSystem extends System<CoreEvents> {
   ): void {
     if (!inst.tickDamage || inst.tickDamage <= 0) return;
 
-    let shouldTick = false;
+    let tickCount = 0;
 
     if (mode === 'turn') {
       // 턴제 모드에서는 매 턴(delta > 0) 틱 발동
-      shouldTick = delta > 0;
+      tickCount = delta > 0 ? 1 : 0;
     } else {
-      // 실시간 모드에서는 interval 경과 시 틱 발동
+      // 실시간 모드에서는 interval 경과 시 틱 발동 (큰 delta에서 다중 틱 누락 방지)
       const interval = inst.tickInterval ?? 1000;
-      inst.tickTime = (inst.tickTime ?? 0) + delta;
-      if (inst.tickTime >= interval) {
-        shouldTick = true;
-        inst.tickTime -= interval;
+      if (interval > 0) {
+        inst.tickTime = (inst.tickTime ?? 0) + delta;
+        while (inst.tickTime >= interval) {
+          tickCount++;
+          inst.tickTime -= interval;
+        }
       }
     }
 
-    if (!shouldTick) return;
+    if (tickCount === 0) return;
 
     // 도트 피해 적용
-    const totalDotDamage = inst.tickDamage * inst.stacks;
+    const totalDotDamage = inst.tickDamage * inst.stacks * tickCount;
     const stats = entity.get(StatsComponent);
     const extStats = entity.get(ExtendedStatsComponent);
 
@@ -348,35 +355,60 @@ export class StatusEffectSystem extends System<CoreEvents> {
       sourceEntityId: inst.sourceEntityId,
     });
 
-    this.bus.emit('stats:hp:changed', {
-      entityId: entity.id,
-      prev: prevHp,
-      next: nextHp,
-      delta: -totalDotDamage,
-    });
+    const actualDelta = nextHp - prevHp;
+    if (actualDelta !== 0) {
+      this.bus.emit('stats:hp:changed', {
+        entityId: entity.id,
+        prev: prevHp,
+        next: nextHp,
+        delta: actualDelta,
+      });
+    }
 
-    if (nextHp <= 0) {
+    if (nextHp <= 0 && prevHp > 0) {
       this.bus.emit('stats:died', { entityId: entity.id, killerId: inst.sourceEntityId });
     }
   }
 
   /**
-   * 상태이상 만료 시 연동된 StatModsComponent 모디파이어를 자동 롤백 및 클린업
+   * 상태이상 만료/제거 시 연동된 StatModsComponent 모디파이어를 자동 롤백 및 클린업
    */
-  private _rollbackLinkedMods(entity: Entity, inst: StatusInstance): void {
+  private _rollbackLinkedMods(entity: Entity, inst: StatusInstance, isManual = false): void {
     if (!inst.linkedModSourceIds || inst.linkedModSourceIds.length === 0) return;
 
     const modsComp = entity.get(StatModsComponent);
-    if (!modsComp) return;
+    const extComp = entity.get(ExtendedStatsComponent);
+    if (!modsComp && !extComp) return;
 
     for (const sourceId of inst.linkedModSourceIds) {
-      const removed = modsComp.remove(sourceId);
-      if (removed) {
-        this.bus.emit('stat_mod:expired', {
-          entityId: entity.id,
-          sourceId,
-          stat: 'linked',
-        });
+      let removedStat: string | undefined;
+      if (modsComp) {
+        const mod = modsComp.all.find((m) => m.sourceId === sourceId);
+        if (modsComp.remove(sourceId)) {
+          removedStat = mod?.stat;
+        }
+      }
+      if (extComp) {
+        const extMod = extComp.pipeline.getAllModifiers().find((m) => m.sourceId === sourceId);
+        if (extMod && extComp.removeModifier(extMod.stat, sourceId)) {
+          removedStat = removedStat ?? extMod.stat;
+        }
+      }
+
+      if (removedStat !== undefined) {
+        if (isManual) {
+          this.bus.emit('stat_mod:removed', {
+            entityId: entity.id,
+            sourceId,
+            stat: removedStat,
+          });
+        } else {
+          this.bus.emit('stat_mod:expired', {
+            entityId: entity.id,
+            sourceId,
+            stat: removedStat,
+          });
+        }
       }
     }
   }

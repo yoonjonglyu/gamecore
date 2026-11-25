@@ -16,6 +16,7 @@ import { Entity } from '../core/Entity';
 import { System } from '../core/System';
 import { CoreEvents } from '../events';
 import { StatModsComponent, StatModifier } from '../components/StatModsComponent';
+import { ExtendedStatsComponent } from '../components/ExtendedStatsComponent';
 
 export interface AddModRequest {
   entityId: number;
@@ -73,13 +74,22 @@ export class StatModSystem extends System<CoreEvents> {
     }
     this._removeQueue = [];
 
-    // 3. 틱: duration 감소 + 만료 처리
+    // 3. 틱: duration 감소 + 만료 처리 (StatModsComponent + ExtendedStatsComponent)
     for (const entity of entities) {
       const mods = entity.get(StatModsComponent);
-      if (!mods) continue;
-      const expired = mods._tick(delta);
-      for (const { sourceId, stat } of expired) {
-        this.bus.emit('stat_mod:expired', { entityId: entity.id, sourceId, stat });
+      if (mods) {
+        const expired = mods._tick(delta);
+        for (const { sourceId, stat } of expired) {
+          this.bus.emit('stat_mod:expired', { entityId: entity.id, sourceId, stat });
+        }
+      }
+
+      const ext = entity.get(ExtendedStatsComponent);
+      if (ext) {
+        const extExpired = ext.pipeline.tick(delta);
+        for (const { sourceId, stat } of extExpired) {
+          this.bus.emit('stat_mod:expired', { entityId: entity.id, sourceId, stat });
+        }
       }
     }
   }

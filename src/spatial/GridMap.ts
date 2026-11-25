@@ -29,7 +29,7 @@ export class GridMap {
   }
 
   inBounds(x: number, y: number): boolean {
-    return x >= 0 && x < this.width && y >= 0 && y < this.height;
+    return Number.isInteger(x) && Number.isInteger(y) && x >= 0 && x < this.width && y >= 0 && y < this.height;
   }
 
   getTile(x: number, y: number): Tile | undefined {
@@ -66,8 +66,11 @@ export class GridMap {
     legend: Record<string, Tile>,
     id: string = 'default',
   ): GridMap {
+    if (lines.length === 0) {
+      return new GridMap(0, 0, id);
+    }
     const height = lines.length;
-    const width = Math.max(...lines.map((l) => l.length));
+    const width = Math.max(0, ...lines.map((l) => l.length));
     const map = new GridMap(width, height, id);
 
     for (let y = 0; y < height; y++) {

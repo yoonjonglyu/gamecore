@@ -60,6 +60,9 @@ export class SaveManager {
     toVersion: number,
     migrator: MigrationFunction,
   ): void {
+    if (toVersion <= fromVersion) {
+      throw new Error(`Invalid migration step: toVersion (${toVersion}) must be greater than fromVersion (${fromVersion})`);
+    }
     SaveManager._migrations.push({ fromVersion, toVersion, migrator });
     // 최신 버전 번호 자동 동기화
     if (toVersion > SaveManager.currentVersion) {
@@ -132,6 +135,14 @@ export class SaveManager {
     payload: string,
     targetWorld: World<any>,
     secretKey?: string,
+    options?: {
+      /** 레거시 v1.1.0/v1.1.1 서명 형식(version/timestamp 미포함) 허용 여부 (기본: false) */
+      allowLegacySignature?: boolean;
+      /** 복원 전 기존 월드의 엔티티 초기화 여부 */
+      clearWorld?: boolean;
+      /** 커스텀 WorldSerializer */
+      serializer?: WorldSerializer;
+    },
   ): DeserializationResult {
     let envelope: SaveEnvelope;
     try {
@@ -161,8 +172,8 @@ export class SaveManager {
 
     let isValid = SaveManager._constantTimeEqual(envelope.checksum, expectedChecksum);
 
-    // 하위 호환성 fallback: 이전 v1.1.0/v1.1.1 서명 형식 (dataStr + metaStr)
-    if (!isValid) {
+    // 하위 호환성 fallback: 명시적으로 allowLegacySignature: true가 설정된 경우에만 허용
+    if (!isValid && options?.allowLegacySignature) {
       const legacyPayload = dataStr + (metaStr ? `|meta:${metaStr}` : '');
       const legacyExpected = secretKey
         ? hmacSha256(legacyPayload, secretKey)
@@ -206,7 +217,10 @@ export class SaveManager {
 
     // 4. 월드 역직렬화
     try {
-      const entities = SaveManager._serializer.deserialize(currentData, targetWorld);
+      const serializer = options?.serializer ?? SaveManager._serializer;
+      const entities = serializer.deserialize(currentData, targetWorld, {
+        clearWorld: options?.clearWorld,
+      });
       return {
         success: true,
         world: targetWorld,
@@ -235,14 +249,19 @@ export class SaveManager {
 
     let ver = from;
     let transformed = JSON.parse(JSON.stringify(data));
+    const visited = new Set<number>([ver]);
 
     while (ver < to) {
       const step = SaveManager._migrations.find((m) => m.fromVersion === ver);
       if (!step) {
         throw new Error(`No migration path from version ${ver} to ${to}`);
       }
+      if (step.toVersion <= ver || visited.has(step.toVersion)) {
+        throw new Error(`Invalid or cyclic migration path at version ${ver} -> ${step.toVersion}`);
+      }
       transformed = step.migrator(transformed);
       ver = step.toVersion;
+      visited.add(ver);
     }
 
     return { data: transformed, reachedVersion: ver };

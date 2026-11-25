@@ -33,10 +33,11 @@ export class LootComponent extends Component {
     const drops: Array<{ itemId: string | number; quantity: number }> = [];
 
     for (const entry of this.items) {
-      const roll = random ? random.chance(entry.chance) : Math.random() <= entry.chance;
+      const roll = random ? random.chance(entry.chance) : entry.chance > 0 && Math.random() < entry.chance;
       if (roll) {
-        const min = entry.min ?? 1;
-        const max = entry.max ?? min;
+        const rawMin = entry.min ?? 1;
+        const rawMax = entry.max ?? rawMin;
+        const [min, max] = rawMin <= rawMax ? [rawMin, rawMax] : [rawMax, rawMin];
         const quantity = random
           ? random.nextInt(min, max)
           : Math.floor(Math.random() * (max - min + 1)) + min;

@@ -4,7 +4,7 @@
  * 각 System은 자신이 처리할 컴포넌트 타입 목록(query)을 선언한다.
  */
 
-import { Component, ComponentType } from './Component';
+import { ComponentType } from './Component';
 import { Entity } from './Entity';
 import { EventBus, EventMap } from './EventBus';
 

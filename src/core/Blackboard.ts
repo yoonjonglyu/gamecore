@@ -24,10 +24,11 @@ export class Blackboard {
    * 값 설정 (리스너에 변경 통지)
    */
   set<T = any>(key: string, value: T): this {
+    const had = this._data.has(key);
     const prev = this._data.get(key);
     this._data.set(key, value);
-    if (prev !== value) {
-      for (const listener of this._listeners) {
+    if (!had || !Object.is(prev, value)) {
+      for (const listener of Array.from(this._listeners)) {
         listener(key, prev, value);
       }
     }
@@ -42,7 +43,7 @@ export class Blackboard {
     if (this._data.has(key)) {
       const prev = this._data.get(key);
       this._data.delete(key);
-      for (const listener of this._listeners) {
+      for (const listener of Array.from(this._listeners)) {
         listener(key, prev, undefined);
       }
       return true;
@@ -51,7 +52,18 @@ export class Blackboard {
   }
 
   clear(): void {
+    if (this._data.size === 0) return;
+    const entries = Array.from(this._data.entries());
     this._data.clear();
+    for (const [key, prev] of entries) {
+      for (const listener of Array.from(this._listeners)) {
+        listener(key, prev, undefined);
+      }
+    }
+  }
+
+  clearListeners(): void {
+    this._listeners.clear();
   }
 
   // ──────────────────────────────────────────────
@@ -96,10 +108,10 @@ export class Blackboard {
   }
 
   fromRecord(record: Record<string, any>): this {
-    this._data.clear();
+    this.clear();
     if (record && typeof record === 'object') {
       for (const [k, v] of Object.entries(record)) {
-        this._data.set(k, v);
+        this.set(k, v);
       }
     }
     return this;

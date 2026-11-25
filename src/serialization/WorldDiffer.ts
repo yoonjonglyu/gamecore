@@ -21,6 +21,11 @@ export interface ComponentRemovalPatch {
   componentType: string;
 }
 
+export interface TagSyncPatch {
+  entityId: number;
+  tags: string[];
+}
+
 export interface WorldDelta {
   /** 델타 생성 시점 타임스탬프 또는 틱 번호 */
   timestamp: number;
@@ -32,8 +37,12 @@ export interface WorldDelta {
   updatedComponents: ComponentPatch[];
   /** 엔티티에서 제거된 컴포넌트 목록 */
   removedComponents: ComponentRemovalPatch[];
+  /** 태그가 변경된 엔티티 목록 */
+  updatedTags?: TagSyncPatch[];
   /** 변경된 전역 블랙보드 키-값 쌍 (선택) */
   blackboard?: Record<string, any>;
+  /** 삭제된 전역 블랙보드 키 목록 (선택) */
+  removedBlackboardKeys?: string[];
 }
 
 export class WorldDiffer {
@@ -55,8 +64,8 @@ export class WorldDiffer {
     world: World<any>,
     serializer: WorldSerializer = defaultWorldSerializer,
   ): import('./WorldSerializer').SerializedWorld {
-    WorldDiffer._defaultInstance.captureSnapshot(world);
-    return serializer.serialize(world);
+    const differ = serializer === defaultWorldSerializer ? WorldDiffer._defaultInstance : new WorldDiffer(serializer);
+    return differ.captureSnapshot(world);
   }
 
   /**
@@ -123,8 +132,9 @@ export class WorldDiffer {
     const destroyed: number[] = [];
     const updatedComponents: ComponentPatch[] = [];
     const removedComponents: ComponentRemovalPatch[] = [];
+    const updatedTags: TagSyncPatch[] = [];
 
-    // 1. 신규 엔티티 및 수정된 컴포넌트 감지
+    // 1. 신규 엔티티 및 수정된 컴포넌트/태그 감지
     for (const [id, curEnt] of currentEntityMap) {
       const prevEnt = this._lastEntityMap.get(id);
 
@@ -132,6 +142,13 @@ export class WorldDiffer {
         // 새로 생성된 엔티티
         created.push(curEnt);
       } else {
+        // 태그 변경 비교
+        const prevTagsSorted = [...prevEnt.tags].sort();
+        const curTagsSorted = [...curEnt.tags].sort();
+        if (JSON.stringify(prevTagsSorted) !== JSON.stringify(curTagsSorted)) {
+          updatedTags.push({ entityId: id, tags: [...curEnt.tags] });
+        }
+
         // 기존 엔티티의 컴포넌트 변화 비교
         const prevCompMap = new Map<string, string>();
         for (const c of prevEnt.components) {
@@ -172,20 +189,27 @@ export class WorldDiffer {
       }
     }
 
-    // 3. 블랙보드 변화 감지
+    // 3. 블랙보드 변화(추가/수정/삭제) 감지
     const blackboardPatch: Record<string, any> = {};
+    const removedBlackboardKeys: string[] = [];
     let bbChanged = false;
     const currentBB = currentSerialized.blackboard ?? {};
     for (const [k, v] of Object.entries(currentBB)) {
-      if (this._lastBlackboard[k] !== v) {
+      const hadPrev = Object.prototype.hasOwnProperty.call(this._lastBlackboard, k);
+      if (!hadPrev || JSON.stringify(this._lastBlackboard[k]) !== JSON.stringify(v)) {
         blackboardPatch[k] = v;
         bbChanged = true;
+      }
+    }
+    for (const k of Object.keys(this._lastBlackboard)) {
+      if (!Object.prototype.hasOwnProperty.call(currentBB, k)) {
+        removedBlackboardKeys.push(k);
       }
     }
 
     // 스냅샷 갱신
     this._lastEntityMap = currentEntityMap;
-    this._lastBlackboard = { ...currentBB };
+    this._lastBlackboard = JSON.parse(JSON.stringify(currentBB));
 
     return {
       timestamp: Date.now(),
@@ -193,7 +217,9 @@ export class WorldDiffer {
       destroyed,
       updatedComponents,
       removedComponents,
+      updatedTags: updatedTags.length > 0 ? updatedTags : undefined,
       blackboard: bbChanged ? blackboardPatch : undefined,
+      removedBlackboardKeys: removedBlackboardKeys.length > 0 ? removedBlackboardKeys : undefined,
     };
   }
 
@@ -211,17 +237,29 @@ export class WorldDiffer {
     }
     world.flushRemovals();
 
-    // 2. 새로 생성된 엔티티 복원
+    // 2. 새로 생성된 엔티티 복원 (기존 클라이언트 blackboard는 보존)
     if (delta.created.length > 0) {
       this._serializer.deserialize(
         {
           version: '1',
           timestamp: Date.now(),
           entities: delta.created,
-          blackboard: {},
         },
         world,
       );
+    }
+
+    // 2-1. 태그 동기화 적용
+    if (delta.updatedTags) {
+      for (const tagPatch of delta.updatedTags) {
+        const ent = world.getEntity(tagPatch.entityId);
+        if (ent) {
+          ent.clearTags();
+          for (const tag of tagPatch.tags) {
+            ent.addTag(tag);
+          }
+        }
+      }
     }
 
     // 3. 컴포넌트 추가 및 갱신 적용
@@ -251,10 +289,15 @@ export class WorldDiffer {
       }
     }
 
-    // 5. 블랙보드 갱신 적용
+    // 5. 블랙보드 갱신 및 삭제 적용
     if (delta.blackboard) {
       for (const [k, v] of Object.entries(delta.blackboard)) {
         world.blackboard.set(k, v);
+      }
+    }
+    if (delta.removedBlackboardKeys) {
+      for (const k of delta.removedBlackboardKeys) {
+        world.blackboard.delete(k);
       }
     }
   }

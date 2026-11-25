@@ -28,6 +28,7 @@ export interface QuestDef {
   autoComplete?: boolean;
   autoReward?: boolean;
   state?: QuestState;
+  startedAt?: number;
   metadata?: Record<string, any>;
 }
 
@@ -76,7 +77,7 @@ export class QuestsComponent extends Component {
       autoComplete: def.autoComplete ?? true,
       autoReward: def.autoReward ?? false,
       state: def.state ?? 'active',
-      startedAt: Date.now(),
+      startedAt: def.startedAt,
       metadata: def.metadata,
     };
 
@@ -138,13 +139,12 @@ export class QuestsComponent extends Component {
     const allCompleted = quest.objectives.every((obj) => obj.completed);
     if (allCompleted && quest.autoComplete) {
       quest.state = 'completed';
-      quest.completedAt = Date.now();
     }
 
     return { quest, objective, allCompleted };
   }
 
-  completeQuest(questId: string): boolean {
+  completeQuest(questId: string, completedAt?: number): boolean {
     const quest = this._quests.get(questId);
     if (!quest || quest.state !== 'active') return false;
 
@@ -153,7 +153,9 @@ export class QuestsComponent extends Component {
       obj.completed = true;
     }
     quest.state = 'completed';
-    quest.completedAt = Date.now();
+    if (completedAt !== undefined) {
+      quest.completedAt = completedAt;
+    }
     return true;
   }
 

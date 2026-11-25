@@ -174,7 +174,12 @@ export class FSMComponent extends Component {
     if (cfg?.duration !== undefined && this._stateTimer >= cfg.duration) {
       const fallback = cfg.fallbackState ?? cfg.autoTransitionTo ?? 'idle';
       const prev = this._currentState;
-      this.transitionTo(fallback, true);
+      const transitioned = this.transitionTo(fallback, true);
+      if (!transitioned) {
+        // 자기 자신으로 fallback 시 타이머만 리셋하고 불필요한 이벤트 스팸 방지
+        this._stateTimer = 0;
+        return { changed: false, current: this._currentState };
+      }
       return { changed: true, prev, current: this._currentState };
     }
 

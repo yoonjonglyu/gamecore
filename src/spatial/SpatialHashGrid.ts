@@ -27,7 +27,7 @@ export class SpatialHashGrid {
 
   constructor(options?: number | SpatialHashGridOptions) {
     const size = typeof options === 'number' ? options : options?.cellSize ?? 100;
-    this.cellSize = Math.max(10, size);
+    this.cellSize = Number.isFinite(size) && size > 0 ? Math.max(1, size) : 100;
   }
 
   private _hash(cellX: number, cellY: number): string {
@@ -204,21 +204,35 @@ export class SpatialHashGrid {
    * 기준점에서 가장 가까운 엔티티를 찾는다.
    */
   findNearest(x: number, y: number, maxRadius: number = Infinity): SpatialNeighbor | undefined {
-    const searchRadius = Number.isFinite(maxRadius) ? maxRadius : this.cellSize * 5;
-    const candidates = this.queryCircle(x, y, searchRadius);
+    const hasFiniteLimit = Number.isFinite(maxRadius);
+    if (hasFiniteLimit && maxRadius < 0) return undefined;
 
     let closestId: number | undefined;
     let closestDistSq = Infinity;
 
-    for (const id of candidates) {
-      const obj = this._objects.get(id);
-      if (!obj) continue;
-      const dx = obj.x - x;
-      const dy = obj.y - y;
-      const dSq = dx * dx + dy * dy;
-      if (dSq < closestDistSq) {
-        closestDistSq = dSq;
-        closestId = id;
+    if (!hasFiniteLimit) {
+      for (const [id, obj] of this._objects) {
+        const dx = obj.x - x;
+        const dy = obj.y - y;
+        const dSq = dx * dx + dy * dy;
+        if (dSq < closestDistSq) {
+          closestDistSq = dSq;
+          closestId = id;
+        }
+      }
+    } else {
+      const maxRadiusSq = maxRadius * maxRadius;
+      const candidates = this.queryCircle(x, y, maxRadius);
+      for (const id of candidates) {
+        const obj = this._objects.get(id);
+        if (!obj) continue;
+        const dx = obj.x - x;
+        const dy = obj.y - y;
+        const dSq = dx * dx + dy * dy;
+        if (dSq <= maxRadiusSq && dSq < closestDistSq) {
+          closestDistSq = dSq;
+          closestId = id;
+        }
       }
     }
 

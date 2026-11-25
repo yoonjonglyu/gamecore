@@ -148,6 +148,7 @@ export type { GridCoord, PathfindingOptions, PathResult, HeuristicType } from '.
 export { MovementSystem } from './spatial/MovementSystem';
 export type { MoveRequest } from './spatial/MovementSystem';
 export { SpatialHashGrid } from './spatial/SpatialHashGrid';
+export type { SpatialObject, SpatialNeighbor, SpatialHashGridOptions } from './spatial/SpatialHashGrid';
 export { SpatialGridSystem } from './spatial/SpatialGridSystem';
 export type { SpatialGridSystemOptions } from './spatial/SpatialGridSystem';
 
@@ -214,7 +215,7 @@ export { Registry } from './data/Registry';
 export type { Identifiable } from './data/Registry';
 export { DataManager } from './data/DataManager';
 export type { GameDataBundle } from './data/DataManager';
-export { ItemDef } from './data/ItemDef';
+export type { ItemDef } from './data/ItemDef';
 export { DropTable } from './data/DropTable';
 export type { DropEntry, DropResult } from './data/DropTable';
 export { AffixGenerator } from './data/AffixGenerator';

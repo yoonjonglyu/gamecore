@@ -82,6 +82,13 @@ export class StatPipeline implements StatReader {
    * });
    */
   defineStat(def: StatDefinition): this {
+    const prevDef = this._definitions.get(def.name);
+    if (prevDef?.dependencies) {
+      for (const oldDep of prevDef.dependencies) {
+        this._dependents.get(oldDep)?.delete(def.name);
+      }
+    }
+
     this._definitions.set(def.name, { ...def });
     if (def.base !== undefined) {
       this._baseValues.set(def.name, def.base);
@@ -130,14 +137,21 @@ export class StatPipeline implements StatReader {
     const existing = statMods.get(mod.sourceId);
 
     if (existing) {
+      // 수치 갱신 (명시적으로 제공된 필드 반영)
+      if (mod.flat !== undefined) existing.flat = mod.flat;
+      if (mod.percent !== undefined) existing.percent = mod.percent;
+      if (mod.amplification !== undefined) existing.amplification = mod.amplification;
+      if (mod.sourceEntityId !== undefined) existing.sourceEntityId = mod.sourceEntityId;
+
       // 지속시간 갱신
       if (mod.remainingDuration !== undefined && existing.remainingDuration !== undefined) {
         existing.remainingDuration = Math.max(existing.remainingDuration, mod.remainingDuration);
       } else if (mod.remainingDuration !== undefined) {
         existing.remainingDuration = mod.remainingDuration;
       }
-      // 스택 누적
-      const maxStacks = mod.maxStacks ?? 1;
+      // 스택 누적 (기존 maxStacks 축소 방지)
+      const maxStacks = mod.maxStacks ?? existing.maxStacks ?? 1;
+      existing.maxStacks = maxStacks;
       existing.stacks = Math.min((existing.stacks ?? 1) + 1, maxStacks);
     } else {
       statMods.set(mod.sourceId, { stacks: 1, ...mod });
@@ -158,9 +172,10 @@ export class StatPipeline implements StatReader {
   }
 
   removeModifiersBySource(sourceId: string): void {
+    const isPrefix = sourceId.endsWith(':');
     for (const [stat, mods] of this._modifiers) {
       for (const id of [...mods.keys()]) {
-        if (id === sourceId || id.startsWith(sourceId)) {
+        if (id === sourceId || (isPrefix && id.startsWith(sourceId))) {
           mods.delete(id);
           this._markDirty(stat);
         }
@@ -268,7 +283,13 @@ export class StatPipeline implements StatReader {
             this._dependents.set(depName, new Set());
           }
           this._dependents.get(depName)!.add(statName);
-          return this._evaluateWithCycleDetection(depName, new Set(evaluating)).finalValue;
+          if (this._cache.has(depName) && !this._dirty.get(depName)) {
+            return this._cache.get(depName)!;
+          }
+          const depBreakdown = this._evaluateWithCycleDetection(depName, new Set(evaluating));
+          this._cache.set(depName, depBreakdown.finalValue);
+          this._dirty.set(depName, false);
+          return depBreakdown.finalValue;
         },
       };
       base += def.formula(formulaReader);
@@ -345,7 +366,6 @@ export class StatPipeline implements StatReader {
    */
   tick(delta: number): Array<{ sourceId: string; stat: string }> {
     const expired: Array<{ sourceId: string; stat: string }> = [];
-    let anyExpired = false;
 
     for (const [stat, mods] of this._modifiers) {
       for (const [id, mod] of mods) {
@@ -355,7 +375,6 @@ export class StatPipeline implements StatReader {
           expired.push({ sourceId: id, stat });
           mods.delete(id);
           this._markDirty(stat);
-          anyExpired = true;
         }
       }
     }

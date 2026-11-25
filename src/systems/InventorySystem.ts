@@ -36,7 +36,6 @@ export class InventorySystem extends System<CoreEvents> {
       const inv = entity.get(InventoryComponent)!;
 
       if (req.type === 'add') {
-        const wasFull = inv.isFull;
         const ok = inv.add(req.defId, req.quantity);
         if (ok) {
           this.bus.emit('inventory:item:added', {
@@ -45,7 +44,7 @@ export class InventorySystem extends System<CoreEvents> {
             quantity: req.quantity,
           });
         }
-        if (!wasFull && inv.isFull) {
+        if (!ok || inv.isFull) {
           this.bus.emit('inventory:full', { entityId: req.entityId });
         }
       } else {

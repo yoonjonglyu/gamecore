@@ -11,6 +11,8 @@ import { Entity } from '../core/Entity';
 import { System } from '../core/System';
 import { StatsComponent } from '../components/StatsComponent';
 import { ExtendedStatsComponent } from '../components/ExtendedStatsComponent';
+import { StatModsComponent } from '../components/StatModsComponent';
+import { BarrierComponent } from '../components/BarrierComponent';
 import { CoreEvents } from '../events';
 import {
   AttackRequest,
@@ -141,17 +143,23 @@ export class CombatSystem extends System<CoreEvents> {
     // 공격자 및 대상 스탯 확인 (StatsComponent 또는 ExtendedStatsComponent)
     const attackerStats = attacker.get(StatsComponent);
     const attackerExt = attacker.get(ExtendedStatsComponent);
+    const attackerMods = attacker.get(StatModsComponent);
     const targetStats = target.get(StatsComponent);
     const targetExt = target.get(ExtendedStatsComponent);
+    const targetMods = target.get(StatModsComponent);
+
+    // 공격자가 사망 상태면 중단
+    const isAttackerDead = attackerStats?.isDead || (attackerExt ? attackerExt.isDead : false);
+    if (isAttackerDead) return;
 
     // 대상이 없거나 사망 상태면 중단
     const isTargetDead = targetStats?.isDead || (targetExt ? targetExt.isDead : false);
     if ((!targetStats && !targetExt) || isTargetDead) return;
 
-    // 기본 공격력 / 방어력 추출
+    // 기본 공격력 / 방어력 추출 (StatModsComponent 버프/장비 반영)
     const baseAtk = req.baseDamage ??
-      (attackerStats ? attackerStats.attack : (attackerExt ? attackerExt.get('attack') : 10));
-    const baseDef = targetStats ? targetStats.defense : (targetExt ? targetExt.get('defense') : 0);
+      (attackerStats ? attackerStats.computedAttack(attackerMods) : (attackerExt ? attackerExt.get('attack') : 10));
+    const baseDef = targetStats ? targetStats.computedDefense(targetMods) : (targetExt ? targetExt.get('defense') : 0);
     const currentHp = targetStats ? targetStats.hp : (targetExt ? targetExt.hp : 100);
 
     // ── CombatContext 초기화 ────────────────────────
@@ -243,7 +251,7 @@ export class CombatSystem extends System<CoreEvents> {
       this.bus.emit('barrier:absorbed', {
         entityId: target.id,
         amount: ctx.barrierAbsorbed,
-        remainingBarrier: target.get(ExtendedStatsComponent) ? 0 : 0, // barrier component current value
+        remainingBarrier: target.get(BarrierComponent)?.current ?? 0,
       });
     }
 
@@ -263,6 +271,8 @@ export class CombatSystem extends System<CoreEvents> {
       ctx.nextTargetHp = res.next;
       ctx.isTargetDead = targetExt.isDead;
     }
+
+    const prevAttackerHp = attackerStats ? attackerStats.hp : (attackerExt ? attackerExt.hp : undefined);
 
     for (const mw of this._middlewares) {
       mw.onPostHit?.(ctx);
@@ -302,6 +312,21 @@ export class CombatSystem extends System<CoreEvents> {
         targetId: req.targetId,
         amount: ctx.reflectedDamage,
       });
+    }
+
+    if (prevAttackerHp !== undefined) {
+      const nextAttackerHp = attackerStats ? attackerStats.hp : attackerExt!.hp;
+      if (nextAttackerHp !== prevAttackerHp) {
+        this.bus.emit('stats:hp:changed', {
+          entityId: req.attackerId,
+          prev: prevAttackerHp,
+          next: nextAttackerHp,
+          delta: nextAttackerHp - prevAttackerHp,
+        });
+      }
+      if (ctx.reflectedDamage > 0 && nextAttackerHp <= 0) {
+        this.bus.emit('stats:died', { entityId: req.attackerId, killerId: req.targetId });
+      }
     }
 
     // 연출(Cue) 프로토콜 연동

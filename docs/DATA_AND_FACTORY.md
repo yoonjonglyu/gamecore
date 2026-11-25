@@ -65,7 +65,7 @@ export interface EntityBlueprint {
 
 ## 3. EntityFactory (블루프린트 조립 공장)
 
-블루프린트 ID를 받아 월드 내 [Entity](file:///e:/withc/Documents/coding/gamecore/src/core/Entity.ts)로 자동 조립하여 스폰합니다.
+블루프린트 ID를 받아 월드 내 [Entity](../src/core/Entity.ts)로 자동 조립하여 스폰합니다.
 
 ```ts
 const factory = new EntityFactory(world, data);

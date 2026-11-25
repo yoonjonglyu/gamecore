@@ -41,6 +41,17 @@ export class LineOfSight {
     y1: number,
     extraBlocking?: Set<string> | GridCoord[],
   ): boolean {
+    if (
+      !Number.isInteger(x0) ||
+      !Number.isInteger(y0) ||
+      !Number.isInteger(x1) ||
+      !Number.isInteger(y1) ||
+      !map.inBounds(x0, y0) ||
+      !map.inBounds(x1, y1)
+    ) {
+      return false;
+    }
+
     const blockingSet = new Set<string>();
     if (extraBlocking) {
       if (extraBlocking instanceof Set) {
@@ -96,7 +107,25 @@ export class FieldOfView {
     radius: number,
     options: FOVOptions = {},
   ): GridCoord[] {
+    if (
+      !Number.isInteger(originX) ||
+      !Number.isInteger(originY) ||
+      !map.inBounds(originX, originY) ||
+      !Number.isFinite(radius) ||
+      radius < 0
+    ) {
+      return [];
+    }
+
     const { extraBlocking, includeWalls = true } = options;
+    const blockingSet = new Set<string>();
+    if (extraBlocking) {
+      if (extraBlocking instanceof Set) {
+        for (const k of extraBlocking) blockingSet.add(k);
+      } else {
+        for (const pt of extraBlocking) blockingSet.add(coordKey(pt.x, pt.y));
+      }
+    }
 
     const visibleSet = new Set<string>();
     const result: GridCoord[] = [];
@@ -108,10 +137,10 @@ export class FieldOfView {
     const r2 = radius * radius;
 
     // 바운딩 박스 내 타일들 중 반경 내 타일에 대해 LOS 검사
-    const minX = Math.max(0, originX - radius);
-    const maxX = Math.min(map.width - 1, originX + radius);
-    const minY = Math.max(0, originY - radius);
-    const maxY = Math.min(map.height - 1, originY + radius);
+    const minX = Math.max(0, Math.floor(originX - radius));
+    const maxX = Math.min(map.width - 1, Math.ceil(originX + radius));
+    const minY = Math.max(0, Math.floor(originY - radius));
+    const maxY = Math.min(map.height - 1, Math.ceil(originY + radius));
 
     for (let y = minY; y <= maxY; y++) {
       for (let x = minX; x <= maxX; x++) {
@@ -120,10 +149,10 @@ export class FieldOfView {
         const distSq = (x - originX) * (x - originX) + (y - originY) * (y - originY);
         if (distSq > r2) continue;
 
-        const isWall = !map.isWalkable(x, y);
-        if (isWall && !includeWalls) continue;
+        const isWallOrBlocked = !map.isWalkable(x, y) || blockingSet.has(coordKey(x, y));
+        if (isWallOrBlocked && !includeWalls) continue;
 
-        if (LineOfSight.hasLineOfSight(map, originX, originY, x, y, extraBlocking)) {
+        if (LineOfSight.hasLineOfSight(map, originX, originY, x, y, blockingSet)) {
           const key = coordKey(x, y);
           if (!visibleSet.has(key)) {
             visibleSet.add(key);

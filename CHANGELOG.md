@@ -3,6 +3,18 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.4] - 2026-11-25
+
+### Fixed
+- **Packaging & NodeNext Type Declarations**: Split `exports` conditions into `"import"` (`.d.ts`/`.js`) and `"require"` (`.d.cts`/`.cjs`), added `scripts/fix-dts.mjs` for NodeNext-compatible relative declaration specifiers, removed duplicate `src/index.js` and legacy `src/model/*` files, and exported `ItemDef` as `export type` along with spatial grid interfaces.
+- **ECS Core Lifecycle & Memory Leaks**: Unbound displaced components on `Entity.add()`/`removeAllComponents()`/`clear()`, allowed `EventBus.off()` to cancel `once()` wrappers and cleaned empty listener sets, cleaned `World.destroy()` subscriptions/schedulers/maps, guarded `TimerScheduler` against non-finite deltas/counts and listener exceptions, prevented duplicate `World.addSystem()`, and fixed `Blackboard.fromRecord()` stale key cleanup.
+- **Determinism, Canonical `World.hash()`, & Serialization**: Eliminated non-deterministic `Date.now()` / `Math.random()` defaults in `QuestsComponent` and `InventoryComponent`, upgraded `World.hash()` to canonical recursive key sorting with full component coverage, registered `StatusEffectsComponent`/`StatModsComponent`/`SkillsComponent`/`ItemDefComponent` and `InventoryComponent.maxWeight` in `defaultComponentRegistry`, fixed unpaired UTF-16 surrogate encoding in `crypto.ts`, synced tags & deleted blackboard keys in `WorldDiffer`, and required explicit `{ allowLegacySignature: true }` in `SaveManager.deserialize()` with migration cycle/downgrade guards.
+- **Combat, Skills, Status, Equipment & Progression**: Applied `magicPen` for magical attacks in `DefaultDamageCalculator`, blocked dead attackers and emitted accurate `BarrierComponent` remainders and reflect/lifesteal events, prevented `SkillSystem` + `StatusEffectSystem` double-ticking, fixed `ExtendedStatsComponent` default HP (`100` / alive), added `StatusEffectSystem` reaction recursion guard and catch-up DoT loop, prevented swap loss when inventory is full in `EquipmentSystem`, scoped `QuestSystem` kills to `killerId`, and prevented reviving dead entities on level-up.
+- **Spatial, AI, Dialogue, Idle, Gacha, Data & Factory**: Isolated `MovementSystem` entity collisions by `mapId` and snapshotted queues, fixed `SpatialHashGrid.findNearest` `Infinity` radius scans, checked integer bounds in `GridMap.inBounds`, blocked diagonal corner-cutting across dynamic obstacles in `GridPathfinding`, hardened `FieldOfView` input guards and `extraBlocking`, made `RepeatNode` stateful across `RUNNING` ticks, handled missing initial nodes in `DialogueSession`, preserved overcapped stamina in `OfflineProgressEngine`, fixed Gacha/DropTable/AffixGenerator edge cases, and applied blueprint equipment stats & `itemId: 0` in `EntityFactory`.
+- **Docs, Skills & CI**: Aligned `README.md`, `README.ko.md`, `docs/*.md`, `skills/gamecore/SKILL.md`, `.agents/skills/gamecore-developer/SKILL.md`, and `examples/dungeon_crawler.ts` (`EquipmentComponent` & single auto-loot drop), bumped CI `pnpm` to `10`, and added `pnpm run smoke` to CI.
+
+---
+
 ## [1.1.3] - 2026-10-19
 
 ### Fixed
@@ -48,10 +60,10 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - **Multiplayer Delta Sync (`WorldDiffer`)**: Lightweight network delta snapshotting (`createDelta`, `applyDelta`) for state replication across clients, spectator modes, and server-authoritative setups.
 - **Entity Hierarchy System (`HierarchyComponent`, `HierarchySystem`)**: Parent-child relationship management with coordinate offset tracking (`offsetX`, `offsetY`) and cascading destruction (`cascadeDestroy`).
 - **Save Envelope Metadata**: Arbitrary custom metadata bundling directly within HMAC-signed save envelopes (`SaveManager`).
-- **Offline Idle Progress Engine (`OfflineProgressEngine`)**: AFK reward simulation with time caps, non-linear growth curves, and multi-resource rates.
-- **Branching Dialogue System (`DialogueSession`)**: Graph-based dialogue sessions with blackboard condition evaluations, variable replacement, and automated side-effect event triggers.
-- **2D Grid FOV & LOS (`FieldOfView`)**: Raycasting field of view, line-of-sight checks, and shadowcasting fog-of-war for tilemaps and tactics.
-- **Behavior Tree AI (`BehaviorTree`)**: Composable reactive AI system with `SelectorNode`, `SequenceNode`, `ActionNode`, `ConditionNode`, and `InverterNode`.
+- **Offline Idle Progress Engine (`OfflineProgressEngine`)**: AFK reward simulation with time caps, stamina recovery, and deterministic stage/drop simulation.
+- **Branching Dialogue System (`DialogueSession`)**: Graph-based dialogue sessions with blackboard condition evaluations, session variables, and automated side-effect callbacks.
+- **2D Grid FOV & LOS (`FieldOfView`)**: Bresenham raycasting field of view, line-of-sight checks, and fog-of-war for tilemaps and tactics.
+- **Behavior Tree AI (`BehaviorTreeRunner`)**: Composable reactive AI system with `SelectorNode`, `SequenceNode`, `ActionNode`, `ConditionNode`, and `InverterNode`.
 - **Gacha & Pity Engine (`GachaEngine`)**: Deterministic gacha mechanics with soft/hard pity counters, banner rate-ups, and guaranteed drop logic.
 - **Developer AI Skills**: Built-in Antigravity IDE and Gemini CLI developer skill recipes for rapid game prototyping.
 

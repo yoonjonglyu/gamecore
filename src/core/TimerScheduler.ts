@@ -41,9 +41,10 @@ export class TimerScheduler {
    */
   schedule(delayMs: number, callback: () => void): ScheduledTask {
     const id = TimerScheduler._nextId++;
+    const safeDelay = Number.isFinite(delayMs) ? Math.max(0, delayMs) : 0;
     this._tasks.set(id, {
       id,
-      remaining: Math.max(0, delayMs),
+      remaining: safeDelay,
       repeat: false,
       callback,
       isTurnBased: false,
@@ -59,13 +60,16 @@ export class TimerScheduler {
    */
   scheduleEvery(intervalMs: number, callback: () => void, times?: number): ScheduledTask {
     const id = TimerScheduler._nextId++;
-    const safeInterval = Math.max(1, intervalMs);
+    if (times !== undefined && (!Number.isFinite(times) || times <= 0)) {
+      return this._createHandle(id);
+    }
+    const safeInterval = Number.isFinite(intervalMs) && intervalMs > 0 ? intervalMs : 1e-6;
     this._tasks.set(id, {
       id,
       remaining: safeInterval,
       interval: safeInterval,
       repeat: true,
-      timesRemaining: times !== undefined ? Math.max(1, times) : undefined,
+      timesRemaining: times !== undefined ? Math.floor(times) : undefined,
       callback,
       isTurnBased: false,
     });
@@ -79,9 +83,10 @@ export class TimerScheduler {
    */
   scheduleTurns(turns: number, callback: () => void): ScheduledTask {
     const id = TimerScheduler._nextId++;
+    const safeTurns = Number.isFinite(turns) ? Math.max(0, turns) : 0;
     this._tasks.set(id, {
       id,
-      remaining: Math.max(0, turns),
+      remaining: safeTurns,
       repeat: false,
       callback,
       isTurnBased: true,
@@ -97,13 +102,16 @@ export class TimerScheduler {
    */
   scheduleTurnsEvery(intervalTurns: number, callback: () => void, times?: number): ScheduledTask {
     const id = TimerScheduler._nextId++;
-    const safeInterval = Math.max(1, intervalTurns);
+    if (times !== undefined && (!Number.isFinite(times) || times <= 0)) {
+      return this._createHandle(id);
+    }
+    const safeInterval = Number.isFinite(intervalTurns) && intervalTurns > 0 ? intervalTurns : 1e-6;
     this._tasks.set(id, {
       id,
       remaining: safeInterval,
       interval: safeInterval,
       repeat: true,
-      timesRemaining: times !== undefined ? Math.max(1, times) : undefined,
+      timesRemaining: times !== undefined ? Math.floor(times) : undefined,
       callback,
       isTurnBased: true,
     });
@@ -132,7 +140,7 @@ export class TimerScheduler {
    * World.update() 호출 시 틱 갱신
    */
   update(delta: number, mode: TaskScheduleMode = 'realtime'): void {
-    if (this._tasks.size === 0 || delta <= 0) return;
+    if (this._tasks.size === 0 || !Number.isFinite(delta) || delta <= 0) return;
 
     const isTurn = mode === 'turn';
     const tasksToProcess = Array.from(this._tasks.values());
@@ -146,7 +154,11 @@ export class TimerScheduler {
         task.remaining -= delta;
         if (task.remaining <= 0) {
           this._tasks.delete(task.id);
-          task.callback();
+          try {
+            task.callback();
+          } catch (err) {
+            console.error('[TimerScheduler] Unhandled error in scheduled task:', err);
+          }
         }
       } else {
         const interval = task.interval ?? 1;
@@ -157,14 +169,17 @@ export class TimerScheduler {
             elapsed -= task.remaining;
             task.remaining = interval;
 
-            task.callback();
-
             if (task.timesRemaining !== undefined) {
               task.timesRemaining--;
               if (task.timesRemaining <= 0) {
                 this._tasks.delete(task.id);
-                break;
               }
+            }
+
+            try {
+              task.callback();
+            } catch (err) {
+              console.error('[TimerScheduler] Unhandled error in repeating task:', err);
             }
           } else {
             task.remaining -= elapsed;

@@ -129,15 +129,32 @@ export class ExtendedStatsComponent extends Component {
 
   getResource(resource: string, maxStatName?: string): number {
     if (!this._resources.has(resource)) {
-      // 초기값이 없으면 해당 max 스탯값 또는 0
-      const maxVal = maxStatName ? this.get(maxStatName) : 100;
-      this._resources.set(resource, maxVal);
+      if (maxStatName) {
+        if (this.pipeline.hasStat(maxStatName)) {
+          return this.get(maxStatName);
+        }
+        if (maxStatName === 'maxHp') return 100;
+        if (maxStatName === 'maxMp') return 50;
+        return 0;
+      }
+      if (resource === 'hp') return this.maxHp;
+      if (resource === 'mp') return this.maxMp;
+      return 0;
     }
     return this._resources.get(resource)!;
   }
 
   setResource(resource: string, value: number, maxStatName?: string): void {
-    const maxVal = maxStatName ? this.get(maxStatName) : undefined;
+    let maxVal: number | undefined;
+    if (maxStatName) {
+      if (this.pipeline.hasStat(maxStatName)) {
+        maxVal = this.get(maxStatName);
+      } else if (maxStatName === 'maxHp') {
+        maxVal = 100;
+      } else if (maxStatName === 'maxMp') {
+        maxVal = 50;
+      }
+    }
     let nextVal = Math.max(0, value);
     if (maxVal !== undefined) {
       nextVal = Math.min(maxVal, nextVal);

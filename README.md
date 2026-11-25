@@ -69,7 +69,7 @@ Traditional game logic is often entangled with rendering engines (Three.js, Pixi
 │  │  - High-Level Skill Pipe  │    │  - CueProtocol (SFX/VFX events) │  │
 │  │  - Status & Equipment     │    │  - WorldDiffer (Delta-Sync)     │  │
 │  │  - Turn Queue & Grid Move │    │  - HierarchySystem (Parent/Child)│ │
-│  │  - Save Integrity (HMAC)  │    │  - BehaviorTree & GachaEngine   │  │
+│  │  - Save Integrity (HMAC)  │    │  - BehaviorTreeRunner & Gacha   │  │
 │  └───────────────────────────┘    └─────────────────────────────────┘  │
 └────────────────────────────────────────────────────────────────────────┘
 ```
@@ -82,14 +82,14 @@ Traditional game logic is often entangled with rendering engines (Three.js, Pixi
 |---|---|---|
 | **ECS Core** | `World`, `Entity`, `Component` | Tag querying, query caching (`auto`/`always`), batch updates. |
 | **Deterministic PRNG** | `SeededRandom` | PCG32 generator, state serialization, reproducible dice/crits. |
-| **4-Stage Stat Pipeline** | `StatPipeline`, `ExtendedStats` | $\text{Final} = (\text{Base} + \sum \text{Flat}) \times (1 + \sum \%) \times (1 + \sum \text{Amp})$. |
+| **4-Stage Stat Pipeline** | `StatPipeline`, `ExtendedStatsComponent` | $\text{Final} = (\text{Base} + \sum \text{Flat}) \times (1 + \sum \%) \times (1 + \sum \text{Amp})$. |
 | **Combat Strategy** | `CombatPipeline`, `BarrierComponent` | Pre-hit, damage calculate, shield absorb, and post-hit hooks. |
 | **Global Blackboard** | `Blackboard` | Global game flags with `increment()`, `toggle()`, and save serialization. |
 | **Action Gating (FSM)** | `FSMComponent`, `FSMSystem` | States (`idle`, `casting`, `stunned`), `canMove`, `canCast`, `canAttack`. |
 | **2D Spatial Hash** | `SpatialHashGrid`, `SpatialGridSystem`| $O(1)$ radius and bounding-box queries for continuous 2D coordinates. |
 | **Delta Synchronization** | `WorldDiffer` | Micro-patches for multiplayer networking and client state replication. |
 | **Entity Hierarchy** | `HierarchyComponent`, `HierarchySystem`| Parent-child attachments, coordinate offsets, and cascade destroy. |
-| **Behavior Tree AI** | `BehaviorTree`, `SelectorNode` | Composable decision nodes (`Sequence`, `Selector`, `Action`, `Condition`). |
+| **Behavior Tree AI** | `BehaviorTreeRunner`, `SelectorNode` | Composable decision nodes (`Sequence`, `Selector`, `Action`, `Condition`). |
 | **Gacha Engine** | `GachaEngine` | Deterministic soft/hard pity counters, banner rate-ups, and guarantees. |
 | **Save Integrity** | `SaveManager` | Pure TS HMAC-SHA256 signature verification & schema migration. |
 | **Presentation Protocol** | `CueQueue`, `CueProtocol` | Decoupled audio/VFX event queue (`sfx`, `vfx`, `shake`, `flash`). |
@@ -213,9 +213,22 @@ if (serverHash !== clientHash) {
 
 ---
 
+## 🆕 What's New in v1.1.3 & v1.1.4
+
+### v1.1.4 Highlights
+* **NodeNext ESM + CJS Dual Type Declarations**: Split `package.json` `exports` for `"import"` (`.d.ts`/`.js`) and `"require"` (`.d.cts`/`.cjs`) with `.js`/`.cjs` relative declaration specifiers so TypeScript `--moduleResolution NodeNext` consumers work out of the box.
+* **Canonical `World.hash()` & Full `ComponentRegistry`**: Canonical JSON hashing sorts keys deterministically, excludes pending removals, and covers `SkillsComponent`, `StatusEffectsComponent`, `StatModsComponent`, `QuestsComponent`, `ItemDefComponent`, and `InventoryComponent.maxWeight`.
+* **Hardened `SaveManager` & `WorldDiffer`**: Rejects legacy v1.1.0/v1.1.1 signatures unless explicitly opted in (`{ allowLegacySignature: true }`), guards migration cycles/downgrades, and syncs entity tags and deleted blackboard keys cleanly across deltas.
+* **Core Determinism, Combat & Subsystem Fixes**: Eliminated non-deterministic timestamps/IDs in `QuestsComponent` and `InventoryComponent`, added `magicPen` support in `DefaultDamageCalculator`, prevented `SkillSystem`/`StatusEffectSystem` double-ticking, fixed `ExtendedStatsComponent` defaults, isolated `MovementSystem` collisions by `mapId`, and tightened AI/Gacha/Factory edge cases.
+
+### v1.1.3 Highlights
+* Fixed React `useComponent` re-renders via `entity.version` snapshots, wired runtime `CueQueue` / `cue:triggered` emissions, raised A* default `maxSteps` to `10000` with `maxStepsExceeded`, disabled pity on `hardPityCount <= 0`, enforced fail-closed custom constraints, isolated `EventBus` listener exceptions, and automated death loot drops via `killerId`.
+
+---
+
 ## 🛠️ Testing & Verification
 
-GameCore includes a comprehensive test suite (213 tests across 24 suites) covering every subsystem:
+GameCore includes a comprehensive test suite (244 tests across 26 suites) covering every subsystem:
 
 ```bash
 # Run unit & integration tests

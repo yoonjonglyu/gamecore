@@ -21,7 +21,7 @@ jobs:
       - name: Install pnpm
         uses: pnpm/action-setup@v3
         with:
-          version: 9
+          version: 10
 
       - name: Setup Node.js ${{ matrix.node-version }}
         uses: actions/setup-node@v4
@@ -40,3 +40,6 @@ jobs:
 
       - name: Build Distribution Bundle
         run: pnpm run build
+
+      - name: Smoke Test ESM & CJS Bundles
+        run: pnpm run smoke

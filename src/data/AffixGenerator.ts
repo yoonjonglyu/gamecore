@@ -155,24 +155,37 @@ export class AffixGenerator {
     const remainingPool = [...pool];
 
     for (let i = 0; i < count && remainingPool.length > 0; i++) {
-      const totalWeight = remainingPool.reduce((sum, a) => sum + (a.weight ?? 100), 0);
+      const totalWeight = remainingPool.reduce((sum, a) => sum + Math.max(0, a.weight ?? 100), 0);
+      if (totalWeight <= 0) break;
       const target = random ? random.nextFloat(0, totalWeight) : Math.random() * totalWeight;
 
       let accumulated = 0;
-      let chosenIndex = 0;
+      let chosenIndex = -1;
 
       for (let j = 0; j < remainingPool.length; j++) {
-        accumulated += remainingPool[j].weight ?? 100;
-        if (target <= accumulated) {
+        const w = Math.max(0, remainingPool[j].weight ?? 100);
+        if (w <= 0) continue;
+        accumulated += w;
+        if (target < accumulated) {
           chosenIndex = j;
           break;
         }
       }
+      if (chosenIndex === -1) break;
 
       const chosenDef = remainingPool.splice(chosenIndex, 1)[0];
-      const value = random
-        ? random.nextInt(chosenDef.minValue, chosenDef.maxValue)
-        : Math.floor(Math.random() * (chosenDef.maxValue - chosenDef.minValue + 1)) + chosenDef.minValue;
+      const [minVal, maxVal] =
+        chosenDef.minValue <= chosenDef.maxValue
+          ? [chosenDef.minValue, chosenDef.maxValue]
+          : [chosenDef.maxValue, chosenDef.minValue];
+      const isFloatRange = !Number.isInteger(minVal) || !Number.isInteger(maxVal);
+      const value = isFloatRange
+        ? random
+          ? random.nextFloat(minVal, maxVal)
+          : minVal + Math.random() * (maxVal - minVal)
+        : random
+          ? random.nextInt(minVal, maxVal)
+          : Math.floor(Math.random() * (maxVal - minVal + 1)) + minVal;
 
       selected.push({ def: chosenDef, value });
     }

@@ -58,10 +58,12 @@ export class StatusEffectsComponent extends Component {
 
     if (this._statuses.has(id)) {
       const existing = this._statuses.get(id)!;
-      // 기존 상태이상이 있으면 duration 갱신 + 스택 추가
+      // 기존 상태이상이 있으면 duration 갱신 + 스택 추가 (기존 maxStacks 축소 방지)
+      const effectiveMaxStacks = Math.max(existing.maxStacks, maxStacks);
+      existing.maxStacks = effectiveMaxStacks;
       existing.remainingDuration = Math.max(existing.remainingDuration, duration);
       existing.initialDuration = duration;
-      existing.stacks = Math.min(existing.stacks + stacks, maxStacks);
+      existing.stacks = Math.min(existing.stacks + stacks, effectiveMaxStacks);
       existing.stackBehavior = stackBehavior;
       if (options?.tickDamage !== undefined) existing.tickDamage = options.tickDamage;
       if (options?.tickInterval !== undefined) existing.tickInterval = options.tickInterval;
@@ -124,5 +126,27 @@ export class StatusEffectsComponent extends Component {
       }
     }
     return expired;
+  }
+
+  toJSON(): { statuses: StatusInstance[] } {
+    return {
+      statuses: this.all.map((s) => ({
+        ...s,
+        linkedModSourceIds: s.linkedModSourceIds ? [...s.linkedModSourceIds] : undefined,
+      })),
+    };
+  }
+
+  static fromJSON(data: { statuses?: StatusInstance[] }): StatusEffectsComponent {
+    const comp = new StatusEffectsComponent();
+    if (Array.isArray(data?.statuses)) {
+      for (const s of data.statuses) {
+        comp._statuses.set(s.id, {
+          ...s,
+          linkedModSourceIds: s.linkedModSourceIds ? [...s.linkedModSourceIds] : undefined,
+        });
+      }
+    }
+    return comp;
   }
 }

@@ -13,6 +13,7 @@ import { EntityBlueprint, SpawnOptions } from './Blueprint';
 import { IdentityComponent } from '../components/IdentityComponent';
 import { StatsComponent, Stats } from '../components/StatsComponent';
 import { ExtendedStatsComponent } from '../components/ExtendedStatsComponent';
+import { StatModsComponent } from '../components/StatModsComponent';
 import { SkillsComponent } from '../components/SkillsComponent';
 
 import { InventoryComponent } from '../components/InventoryComponent';
@@ -129,8 +130,24 @@ export class EntityFactory {
     ];
     if (allInventory.length > 0 || bp.inventory !== undefined) {
       const inv = new InventoryComponent();
+      const metaLookup = (defId: string | number) => {
+        const def = this.data.items.get(defId);
+        if (!def) return undefined;
+        return {
+          id: def.id,
+          name: def.name,
+          maxStack: def.stackLimit,
+          weight: typeof def.spec?.weight === 'number' ? def.spec.weight : undefined,
+          category: def.category,
+          value: def.value,
+        };
+      };
       for (const entry of allInventory) {
-        inv.add(entry.itemId, entry.count ?? 1);
+        const def = this.data.items.get(entry.itemId);
+        inv.add(entry.itemId, entry.count ?? 1, {
+          maxStack: def?.stackLimit,
+          metaLookup,
+        });
       }
       entity.add(inv);
     }
@@ -138,8 +155,23 @@ export class EntityFactory {
     // 7. EquipmentComponent
     if (bp.equipment) {
       const eq = new EquipmentComponent();
+      const excludedSpecKeys = new Set([
+        'weaponType',
+        'armorType',
+        'slot',
+        'category',
+        'itemLevel',
+        'price',
+        'rarity',
+        'icon',
+        'reqLevel',
+        'weight',
+      ]);
+      const modsComp = entity.get(StatModsComponent);
+      const extStats = entity.get(ExtendedStatsComponent);
+
       for (const [slot, itemId] of Object.entries(bp.equipment)) {
-        if (!itemId) continue;
+        if (itemId === undefined || itemId === null || itemId === '') continue;
         const itemDef = this.data.items.get(itemId);
         const equipped: EquippedItem = {
           defId: itemId,
@@ -147,6 +179,21 @@ export class EntityFactory {
           elements: itemDef?.spec?.elements as string[] | undefined,
         };
         eq.equip(slot as EquipSlot, equipped);
+
+        if (itemDef?.spec && (modsComp || extStats)) {
+          for (const [stat, val] of Object.entries(itemDef.spec)) {
+            if (excludedSpecKeys.has(stat)) continue;
+            if (typeof val === 'number' && val !== 0) {
+              const sourceId = `equip:${slot}:${stat}`;
+              if (modsComp) {
+                modsComp.add({ sourceId, stat: stat as keyof Stats, flat: val });
+              }
+              if (extStats) {
+                extStats.addModifier({ sourceId, stat, flat: val });
+              }
+            }
+          }
+        }
       }
       entity.add(eq);
     }

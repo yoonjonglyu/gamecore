@@ -57,14 +57,19 @@ export class StatModsComponent extends Component {
   add(mod: StatModifier): void {
     const existing = this._mods.get(mod.sourceId);
     if (existing && existing.stat === mod.stat) {
+      // 수치 갱신 (명시적으로 제공된 필드 반영)
+      if (mod.flat !== undefined) existing.flat = mod.flat;
+      if (mod.percent !== undefined) existing.percent = mod.percent;
+      if (mod.sourceEntityId !== undefined) existing.sourceEntityId = mod.sourceEntityId;
       // duration 갱신 (더 긴 쪽 유지)
       if (mod.remainingDuration !== undefined && existing.remainingDuration !== undefined) {
         existing.remainingDuration = Math.max(existing.remainingDuration, mod.remainingDuration);
       } else if (mod.remainingDuration !== undefined) {
         existing.remainingDuration = mod.remainingDuration;
       }
-      // 스택 추가
-      const maxStacks = mod.maxStacks ?? 1;
+      // 스택 추가 (기존 maxStacks 축소 방지)
+      const maxStacks = mod.maxStacks ?? existing.maxStacks ?? 1;
+      existing.maxStacks = maxStacks;
       existing.stacks = Math.min((existing.stacks ?? 1) + 1, maxStacks);
     } else {
       this._mods.set(mod.sourceId, { stacks: 1, ...mod });
@@ -133,6 +138,22 @@ export class StatModsComponent extends Component {
       }
     }
     return expired;
+  }
+
+  toJSON(): { mods: StatModifier[] } {
+    return {
+      mods: this.all.map((m) => ({ ...m })),
+    };
+  }
+
+  static fromJSON(data: { mods?: StatModifier[] }): StatModsComponent {
+    const comp = new StatModsComponent();
+    if (Array.isArray(data?.mods)) {
+      for (const m of data.mods) {
+        comp._mods.set(m.sourceId, { ...m });
+      }
+    }
+    return comp;
   }
 }
 

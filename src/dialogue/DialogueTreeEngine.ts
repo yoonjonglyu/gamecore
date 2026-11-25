@@ -65,6 +65,11 @@ export class DialogueSession {
       variables: new Map(),
       custom,
     };
+    if (!tree.nodes[tree.initialNodeId]) {
+      this._currentNodeId = '';
+      this._isFinished = true;
+      return;
+    }
     this._currentNodeId = tree.initialNodeId;
     this._triggerEnter();
   }
@@ -128,6 +133,7 @@ export class DialogueSession {
 
   private _transitionTo(nodeId: string): void {
     if (!this.tree.nodes[nodeId]) {
+      this._currentNodeId = '';
       this._isFinished = true;
       return;
     }

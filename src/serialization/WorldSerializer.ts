@@ -102,9 +102,9 @@ export class WorldSerializer {
     const parsed: SerializedWorld = typeof data === 'string' ? JSON.parse(data) : data;
 
     if (options?.clearWorld) {
-      // 기존 엔티티 모두 제거
-      for (const e of [...targetWorld.entities]) {
-        targetWorld.removeEntity(e.id);
+      targetWorld.clearEntities();
+      if (parsed.blackboard === undefined && targetWorld.blackboard) {
+        targetWorld.blackboard.clear();
       }
     }
 
