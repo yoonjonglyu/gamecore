@@ -10,6 +10,8 @@ import {
   SaveManager,
   World,
   Entity,
+  DataManager,
+  WorldInspector,
 } from '../src';
 
 describe('README Code Snippets Exact Parity Test', () => {
@@ -132,5 +134,36 @@ describe('README Code Snippets Exact Parity Test', () => {
     // 상태 변경 시 즉시 해시 변경 감지 (Desync detection)
     e1.get(StatsComponent)!.hp = 49;
     expect(w1.hash()).not.toBe(hash2);
+  });
+
+  it('v1.2.0 Snippet: Unified CommandBus + FixedStepRunner + DataValidator + WorldInspector', () => {
+    const data = new DataManager({
+      items: [{ id: 'potion', name: 'Potion', category: 'consumable' }],
+      skills: [{ id: 'slash', name: 'Slash', mpCost: 5, cooldown: 100, targetType: 'single_enemy', effects: [{ type: 'damage', basePower: 15 }] }],
+      blueprints: [{ id: 'hero', stats: { hp: 100, maxHp: 100, attack: 20 }, skills: ['slash'], inventory: [{ itemId: 'potion', count: 1 }] }],
+    });
+    expect(data.validate().valid).toBe(true);
+
+    const manager = new GameWorldManager({ seed: 'match-1', stepMs: 16 });
+    const hero = manager.world.createEntity('hero');
+    hero.add(new StatsComponent({ hp: 100, maxHp: 100, attack: 20 }));
+    const enemy = manager.world.createEntity('enemy');
+    enemy.add(new StatsComponent({ hp: 100, maxHp: 100, defense: 0 }));
+
+    manager.startRecording({ checkpointInterval: 5 });
+    manager.enqueue('combat:attack', { attackerId: hero.id, targetId: enemy.id }, { tick: 1 });
+    const frame = manager.advance(24);
+    expect(frame.stepsExecuted).toBe(1);
+    expect(frame.alpha).toBeCloseTo(0.5, 6);
+    const replayData = manager.stopRecording()!;
+
+    const playbackManager = new GameWorldManager({ seed: 'match-1', stepMs: 16 });
+    playbackManager.world.createEntity('hero').add(new StatsComponent({ hp: 100, maxHp: 100, attack: 20 }));
+    playbackManager.world.createEntity('enemy').add(new StatsComponent({ hp: 100, maxHp: 100, defense: 0 }));
+    const result = playbackManager.runner.replay(replayData);
+
+    expect(result.completed).toBe(true);
+    expect(result.desynced).toBe(false);
+    expect(WorldInspector.diffWorlds(manager.world, playbackManager.world).equal).toBe(true);
   });
 });

@@ -351,7 +351,7 @@ export class SkillSystem extends System<CoreEvents> {
   }
 
   private _resolveTargets(
-    def: SkillDef,
+    _def: SkillDef,
     requestedIds: number[],
     entityMap: Map<number, Entity>,
   ): Entity[] {

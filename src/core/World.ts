@@ -323,8 +323,13 @@ export class World<Events extends EventMap = EventMap> implements EntityWorldEmi
     }
     this._entities.clear();
     this._pendingRemove.clear();
+    this._nextEntityId = 0;
     this.invalidateCache();
     this.notifyChange({ type: 'entities_cleared' });
+  }
+
+  isPendingRemoval(id: number): boolean {
+    return this._pendingRemove.has(id);
   }
 
   getEntity(id: number): Entity | undefined {

@@ -35,6 +35,7 @@ export interface EntityDiffDetail {
 
 export interface WorldDiffResult {
   equal: boolean;
+  prngChanged: boolean;
   hashA: string;
   hashB: string;
   addedEntityIds: number[];
@@ -118,7 +119,9 @@ export class WorldInspector<Events extends EventMap = Record<string, any>> {
     world: World<any>,
     options: { tag?: string; includeHash?: boolean } = {},
   ): WorldInspection {
-    const sourceEntities = options.tag ? world.queryByTag(options.tag) : world.entities;
+    const sourceEntities = (options.tag ? world.queryByTag(options.tag) : world.entities).filter(
+      (e) => !world.isPendingRemoval(e.id),
+    );
     const entities = [...sourceEntities]
       .sort((a, b) => a.id - b.id)
       .map((e) => WorldInspector.inspectEntity(e));
@@ -137,9 +140,19 @@ export class WorldInspector<Events extends EventMap = Record<string, any>> {
   static diffWorlds(worldA: World<any>, worldB: World<any>): WorldDiffResult {
     const hashA = worldA.hash();
     const hashB = worldB.hash();
+    const prngChanged =
+      JSON.stringify(worldA.random.exportState()) !== JSON.stringify(worldB.random.exportState());
 
-    const mapA = new Map(worldA.entities.map((e) => [e.id, WorldInspector.inspectEntity(e)]));
-    const mapB = new Map(worldB.entities.map((e) => [e.id, WorldInspector.inspectEntity(e)]));
+    const mapA = new Map(
+      worldA.entities
+        .filter((e) => !worldA.isPendingRemoval(e.id))
+        .map((e) => [e.id, WorldInspector.inspectEntity(e)]),
+    );
+    const mapB = new Map(
+      worldB.entities
+        .filter((e) => !worldB.isPendingRemoval(e.id))
+        .map((e) => [e.id, WorldInspector.inspectEntity(e)]),
+    );
 
     const addedEntityIds: number[] = [];
     const removedEntityIds: number[] = [];
@@ -200,6 +213,7 @@ export class WorldInspector<Events extends EventMap = Record<string, any>> {
 
     return {
       equal: hashA === hashB,
+      prngChanged,
       hashA,
       hashB,
       addedEntityIds,

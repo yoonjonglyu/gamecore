@@ -8,7 +8,6 @@
  */
 
 import { World } from '../core/World';
-import { Entity } from '../core/Entity';
 import { WorldSerializer, SerializedEntity, SerializedComponent, defaultWorldSerializer } from './WorldSerializer';
 
 export interface ComponentPatch {

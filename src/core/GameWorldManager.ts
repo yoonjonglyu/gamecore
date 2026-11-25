@@ -304,6 +304,9 @@ export class GameWorldManager<Events extends EventMap = CoreEvents> {
   stopRecording(): ReplayData | undefined {
     const recorder = this.runner.recorder;
     if (!recorder) return undefined;
+    if (this.runner.tick > 0 && !recorder.hasCheckpointAt(this.runner.tick)) {
+      recorder.recordCheckpoint(this.runner.tick, this.world.hash());
+    }
     this.runner.setRecorder(undefined);
     return JSON.parse(recorder.toJSON()) as ReplayData;
   }

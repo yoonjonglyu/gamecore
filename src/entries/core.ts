@@ -7,8 +7,6 @@ export type { ComponentType } from '../core/Component';
 export { System } from '../core/System';
 export { EventBus } from '../core/EventBus';
 export type { EventMap, EventHandler } from '../core/EventBus';
-export { GameWorldManager } from '../core/GameWorldManager';
-export type { GameWorldManagerOptions } from '../core/GameWorldManager';
 export { Blackboard } from '../core/Blackboard';
 export type { BlackboardListener } from '../core/Blackboard';
 export { TimerScheduler } from '../core/TimerScheduler';

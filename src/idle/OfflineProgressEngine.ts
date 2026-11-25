@@ -11,7 +11,7 @@
  */
 
 import { SeededRandom } from '../math/SeededRandom';
-import { DropTable, DropResult } from '../data/DropTable';
+import { DropTable } from '../data/DropTable';
 
 export type TimeUnit = 'second' | 'minute' | 'hour';
 

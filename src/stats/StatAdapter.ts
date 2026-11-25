@@ -4,7 +4,7 @@
  * 상호 변환 및 동기화를 지원하는 어댑터 유틸리티.
  */
 
-import { StatsComponent, StatsProps } from '../components/StatsComponent';
+import { StatsComponent } from '../components/StatsComponent';
 import { ExtendedStatsComponent } from '../components/ExtendedStatsComponent';
 
 export class StatAdapter {

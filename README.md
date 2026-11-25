@@ -269,7 +269,7 @@ Measured on Node `v22.17.1` (`benchmarks/core.bench.ts`, hardware-dependent):
 
 ## 🛠️ Testing & Verification
 
-GameCore includes a comprehensive test suite (261 tests across 30 suites) covering every subsystem:
+GameCore includes a comprehensive test suite (263 tests across 30 suites) covering every subsystem:
 
 ```bash
 # Run unit & integration tests

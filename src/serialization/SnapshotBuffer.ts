@@ -225,14 +225,18 @@ export class SnapshotBuffer {
     this.capture(normalizedServerTick, world, runner);
 
     const toReplay = unackedCommands.filter(
-      (cmd) => (cmd.tick ?? targetTick) > normalizedServerTick,
+      (cmd) => (cmd.tick ?? normalizedServerTick + 1) > normalizedServerTick,
     );
 
+    let replayedCommands = 0;
     for (const cmd of toReplay) {
       const scheduledTick =
         cmd.tick !== undefined
-          ? Math.min(targetTick, Math.max(normalizedServerTick + 1, Math.floor(cmd.tick)))
+          ? Math.max(normalizedServerTick + 1, Math.floor(cmd.tick))
           : normalizedServerTick + 1;
+      if (scheduledTick <= targetTick) {
+        replayedCommands++;
+      }
       runner.commands.enqueueCommand({
         ...cmd,
         tick: scheduledTick,
@@ -248,7 +252,7 @@ export class SnapshotBuffer {
       matched: false,
       serverTick: normalizedServerTick,
       rollbackPerformed: true,
-      replayedCommands: toReplay.length,
+      replayedCommands,
       replayedTicks: Math.max(0, targetTick - normalizedServerTick),
       finalTick: runner.tick,
       finalHash: world.hash({ includePrngState: this._includePrngState }),

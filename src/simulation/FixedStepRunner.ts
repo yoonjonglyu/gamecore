@@ -135,7 +135,13 @@ export class FixedStepRunner<
 
       this._tick += 1;
       this.commands.flush(this._tick);
-      this.world.update(this.stepMs, this._mode);
+      const savedTimeScale = this.world.timeScale;
+      this.world.timeScale = 1;
+      try {
+        this.world.update(this.stepMs, this._mode);
+      } finally {
+        this.world.timeScale = savedTimeScale;
+      }
       this.world.bus.emit('simulation:tick' as any, {
         tick: this._tick,
         stepMs: this.stepMs,
@@ -168,8 +174,19 @@ export class FixedStepRunner<
       };
     }
 
+    const scaledDelta = frameDeltaMs * Math.max(0, this.world.timeScale);
+    if (!Number.isFinite(scaledDelta) || scaledDelta <= 0) {
+      return {
+        stepsExecuted: 0,
+        currentTick: this._tick,
+        accumulatorMs: this._accumulatorMs,
+        alpha: this.alpha,
+        clamped: false,
+      };
+    }
+
     let clamped = false;
-    let delta = frameDeltaMs;
+    let delta = scaledDelta;
     if (delta > this.maxFrameDeltaMs) {
       delta = this.maxFrameDeltaMs;
       clamped = true;

@@ -43,16 +43,6 @@ export class QuestSystem {
   }
 
   /**
-   * 전역으로 발생한 이벤트에 대해 모든 퀘스트 엔티티의 목표를 갱신합니다.
-   */
-  private _handleGlobalQuestEvent(type: string, amount: number, metadata?: Record<string, any>): void {
-    const entities = this._world.queryEntities([QuestsComponent]);
-    for (const entity of entities) {
-      this.advanceObjective(entity.id, undefined, type, amount, metadata);
-    }
-  }
-
-  /**
    * 특정 엔티티의 퀘스트 목표를 전진시킵니다.
    * @param entityId 퀘스트를 보유한 엔티티 ID
    * @param questId 특정 퀘스트 ID (생략 시 활성 퀘스트 전체 중 objectiveType 일치 항목)

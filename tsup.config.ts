@@ -16,6 +16,6 @@ export default defineConfig({
   clean: true,
   sourcemap: false,
   treeshake: true,
-  splitting: false,
+  splitting: true,
   external: ['react'],
 });

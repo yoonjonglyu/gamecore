@@ -3,6 +3,8 @@ import {
   World,
   WorldInspector,
   GameWorldManager,
+  SnapshotBuffer,
+  WorldSerializer,
   CueQueue,
   DataManager,
   StatsComponent,
@@ -113,5 +115,72 @@ describe('Stage 3: WorldInspector, GameWorldManager DX & Authoritative Demo', ()
     expect(result.diffAfterReconcile.equal).toBe(true);
     expect(result.serverHeroHp).toBe(result.clientHeroHp);
     expect(result.serverCuesCount).toBeGreaterThanOrEqual(1);
+  });
+
+  it('handles P0/P1 polish fixes: clearEntities resets nextEntityId, reconcile keeps future commands, stopRecording saves trailing checkpoint, timeScale scales advance, diffWorlds checks PRNG', () => {
+    // 1. World.clearEntities() resets _nextEntityId for clean post-rollback spawns
+    const server = new GameWorldManager({ seed: 'id-reset', stepMs: 16 });
+    const client = new GameWorldManager({ seed: 'id-reset', stepMs: 16 });
+    const buf = new SnapshotBuffer({ capacity: 16 });
+    const serializer = new WorldSerializer();
+
+    server.world.createEntity('hero').add(new StatsComponent({ hp: 100, maxHp: 100 }));
+    client.world.createEntity('hero').add(new StatsComponent({ hp: 100, maxHp: 100 }));
+    server.step(1);
+    client.step(1);
+    buf.capture(1, client.world, client.runner);
+
+    // Client mispredicts by spawning a temporary entity at tick 2 (id=1), while server did not
+    client.world.createEntity('ghost');
+    client.step(1);
+    buf.capture(2, client.world, client.runner);
+    server.step(1);
+
+    const serverTick2 = serializer.toJSON(server.world, { includePrngState: true });
+    // Rollback client to tick 2 + unacked future tick-4 command (must NOT be clamped to targetTick=2)
+    const futureCmd = { type: 'inventory:add' as const, payload: { entityId: 0, itemId: 'potion', quantity: 1 }, tick: 4 };
+    const rec = buf.reconcile({
+      serverTick: 2,
+      serverState: serverTick2,
+      world: client.world,
+      runner: client.runner,
+      unackedCommands: [futureCmd],
+    });
+    expect(rec.replayedCommands).toBe(0);
+    expect(client.commands.pendingCount).toBe(1);
+    expect(client.commands.peekQueue()[0].tick).toBe(4);
+
+    // Now spawn on both at tick 3: client MUST allocate id=1 just like server
+    const srvSpawn = server.world.createEntity('mob');
+    const cliSpawn = client.world.createEntity('mob');
+    expect(cliSpawn.id).toBe(srvSpawn.id);
+
+    // 2. GameWorldManager.stopRecording() appends trailing final tick checkpoint even if unaligned to interval
+    const recMgr = new GameWorldManager({ seed: 'trail', stepMs: 16 });
+    const h = recMgr.world.createEntity().add(new StatsComponent({ hp: 100, maxHp: 100 }));
+    const t = recMgr.world.createEntity().add(new StatsComponent({ hp: 100, maxHp: 100 }));
+    recMgr.startRecording({ checkpointInterval: 5 });
+    recMgr.enqueue('combat:attack', { attackerId: h.id, targetId: t.id }, { tick: 1 });
+    recMgr.step(7);
+    const replayData = recMgr.stopRecording()!;
+    expect(replayData.checkpoints.some((c) => c.tick === 7)).toBe(true);
+
+    // 3. FixedStepRunner.advance() applies world.timeScale without altering fixed stepMs per tick
+    const tsMgr = new GameWorldManager({ seed: 'timescale', stepMs: 16 });
+    tsMgr.world.setTimeScale(2);
+    const adv = tsMgr.advance(16);
+    expect(adv.stepsExecuted).toBe(2);
+    expect(tsMgr.world.timeScale).toBe(2);
+
+    // 4. WorldInspector.diffWorlds() tracks prngChanged and excludes pending removals
+    const wa = new World({ seed: 'same' });
+    const wb = new World({ seed: 'same' });
+    wb.random.next();
+    const pendingEnt = wb.createEntity('temp');
+    wb.removeEntity(pendingEnt.id);
+    const diff = WorldInspector.diffWorlds(wa, wb);
+    expect(diff.equal).toBe(false);
+    expect(diff.prngChanged).toBe(true);
+    expect(diff.addedEntityIds).toEqual([]);
   });
 });

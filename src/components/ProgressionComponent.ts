@@ -4,7 +4,6 @@
  */
 
 import { Component } from '../core/Component';
-import { Stats } from './StatsComponent';
 
 export type ExpFormula = (level: number) => number;
 

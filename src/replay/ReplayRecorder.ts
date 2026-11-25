@@ -31,7 +31,7 @@ export class ReplayRecorder {
 
   constructor(seed: number | string, options?: ReplayRecorderOptions) {
     this.seed = seed;
-    this.version = options?.version ?? '1.0.0';
+    this.version = options?.version ?? '1.2.0';
     this.metadata = safeClone(options?.metadata);
     this.timestamp = options?.timestamp ?? Date.now();
   }
@@ -50,6 +50,10 @@ export class ReplayRecorder {
   recordCheckpoint(tick: number, stateHash: string | number): this {
     this._checkpoints.push({ tick, stateHash });
     return this;
+  }
+
+  hasCheckpointAt(tick: number): boolean {
+    return this._checkpoints.some((c) => c.tick === tick);
   }
 
   get actionCount(): number {

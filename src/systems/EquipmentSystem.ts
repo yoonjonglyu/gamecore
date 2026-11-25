@@ -28,7 +28,7 @@ import { System } from '../core/System';
 import { CoreEvents } from '../events';
 import { EquipmentComponent, EquipSlot } from '../components/EquipmentComponent';
 import { InventoryComponent } from '../components/InventoryComponent';
-import { StatModsComponent, ModifiableStat } from '../components/StatModsComponent';
+import { StatModsComponent } from '../components/StatModsComponent';
 import { ExtendedStatsComponent } from '../components/ExtendedStatsComponent';
 import { DataManager } from '../data/DataManager';
 import { ConstraintChecker } from '../constraints/ConstraintChecker';
