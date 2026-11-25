@@ -1,4 +1,4 @@
-# GameCore Built-in Systems Reference (v1.1.4)
+# GameCore Built-in Systems Reference (v1.2.0)
 
 GameCore가 기본 제공하는 핵심 시스템 및 파이프라인의 역할, 처리 흐름, API 명세입니다.
 
@@ -151,3 +151,37 @@ GameCore가 기본 제공하는 핵심 시스템 및 파이프라인의 역할, 
   * `'ecs:component:updated'`: `{ entityId, componentName, component }`
   * `'ecs:component:removed'`: `{ entityId, componentName }`
   * `'blackboard:changed'`, `'fsm:state:changed'`, `'quest:completed'` 등
+
+---
+
+## 14. CommandBus & FixedStepRunner (결정론 시뮬레이션 런타임)
+* **역할**: 모든 입력(`CoreCommands` 및 커스텀 커맨드)을 단일 버스에서 검증·큐잉·녹화하고, 가변 프레임 델타를 고정 `stepMs` 스텝으로 변환해 실행합니다.
+* **핵심 API**:
+  * `manager.dispatch(type, payload)` / `manager.enqueue(type, payload, { tick })`
+  * `manager.step(count)` / `manager.advance(frameDeltaMs)` (`alpha` 보간 계수 반환)
+  * `manager.startRecording({ checkpointInterval })` / `manager.stopRecording()` / `manager.runner.replay(replayData)`
+
+---
+
+## 15. DataValidator (마스터 데이터 정적 검증)
+* **역할**: 게임 부팅 시점에 `DataManager`, `DialogueTreeData`, `GachaPoolConfig`의 참조 무결성과 수식 순환 참조를 검사합니다.
+* **핵심 API**:
+  * `data.validate()`, `DataValidator.validateDataManager(data)`
+  * `DataValidator.validateDialogueTree(tree)`, `DataValidator.validateGachaPool(pool)`
+
+---
+
+## 16. SnapshotBuffer (예측/롤백 동기화 버퍼)
+* **역할**: 틱별 `World` + `FixedStepRunner` 스냅샷을 링 버퍼에 보관하고, 서버 권위 스냅샷 수신 시 불일치 롤백 및 미확인 커맨드 재실행을 수행합니다.
+* **핵심 API**:
+  * `buffer.capture(tick, world, runner?)`, `buffer.restore(tick, world, runner?)`
+  * `buffer.reconcile({ serverTick, serverState, serverHash, world, runner, unackedCommands })`
+
+---
+
+## 17. WorldInspector (헤드리스 디버그 인스펙터)
+* **역할**: 엔티티·월드 스냅샷 JSON 추출, 두 월드 간 상태 diff 비교, 이벤트 타임라인 기록을 제공합니다.
+* **핵심 API**:
+  * `WorldInspector.inspectEntity(entity)`, `WorldInspector.inspectWorld(world, options?)`
+  * `WorldInspector.diffWorlds(worldA, worldB)`
+  * `new WorldInspector(world, { maxEvents }).attach(events)`

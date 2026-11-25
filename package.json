@@ -139,6 +139,7 @@
     "build": "tsup && tsc --emitDeclarationOnly && node scripts/fix-dts.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
+    "bench": "tsx benchmarks/core.bench.ts",
     "typecheck": "tsc --noEmit",
     "smoke": "node --input-type=module -e \"Promise.all([import('./dist/index.js'), import('./dist/core/index.js'), import('./dist/serialization/index.js')]).then(([m, c, s]) => { if (!m.World || !c.CommandBus || !s.SnapshotBuffer) throw new Error('ESM Smoke failed'); })\" && node -e \"const m = require('./dist/index.cjs'); const c = require('./dist/core/index.cjs'); const s = require('./dist/serialization/index.cjs'); if (!m.World || !c.CommandBus || !s.SnapshotBuffer) throw new Error('CJS Smoke failed'); console.log('Smoke test passed (ESM & CJS)!')\"",
     "prepublishOnly": "tsc --noEmit && vitest run && pnpm run build && pnpm run smoke"

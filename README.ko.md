@@ -208,6 +208,21 @@ const verify = playbackManager.runner.replay(replayData);
 console.log(verify.completed, verify.desynced); // true, false
 ```
 
+### 데이터 검증 · 예측 롤백 동기화 · 인스펙터 & 서브패스 트리셰이킹
+* **마스터 데이터 정적 검증 (`data.validate()` / `DataValidator`)**: 블루프린트 내 잘못된 `skillId`/`itemId`/장비 참조, `StatPipeline` 수식 순환 참조, 대화 트리 끊긴 노드·고립 노드, 가챠 확률·천장 오류를 부팅 시점에 검출합니다.
+* **스냅샷 링 버퍼 & 예측 롤백 (`SnapshotBuffer`)**: `reconcile()`로 서버 권위 스냅샷과 로컬 예측을 대조하고, 불일치 시 롤백 후 미확인 커맨드를 결정론적으로 재실행합니다 ([examples/authoritative_arena.ts](examples/authoritative_arena.ts) 참고).
+* **디버그 인스펙터 (`WorldInspector`)**: 읽기 전용 JSON 월드 스냅샷(`inspectWorld`), 두 월드 차이 비교(`diffWorlds`), 이벤트 타임라인 추적을 지원합니다.
+* **서브패스 엔트리 분리**: `ryuis-gamecore/core`, `/combat`, `/spatial`, `/serialization`, `/ai`, `/data`, `/react` 서브패스로 필요한 기능만 경량 임포트할 수 있습니다.
+
+### 벤치마크 (`pnpm run bench`, Node `v22.17.1` 실측)
+| 워크로드 | 처리량 (ops/s) | 평균 지연 (ms/op) |
+|---|---|---|
+| `ECS queryEntities (1000 entities)` | `10,220 ops/s` | `0.0978 ms/op` |
+| `SpatialHashGrid queryRadius (1000 entities)` | `34,570 ops/s` | `0.0289 ms/op` |
+| `World.hash() (100 entities)` | `616 ops/s` | `1.6223 ms/op` |
+| `WorldDiffer.createDelta() (100 entities)` | `2,757 ops/s` | `0.3627 ms/op` |
+| `CommandBus + FixedStepRunner.step(1)` | `37,671 ops/s` | `0.0265 ms/op` |
+
 ---
 
 ## 🆕 v1.1.4 주요 개선 및 안정화 사항

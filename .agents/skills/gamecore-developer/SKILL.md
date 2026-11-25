@@ -286,3 +286,31 @@ const replay = manager.stopRecording()!;
 
 const verified = playbackManager.runner.replay(replay); // 체크포인트 해시 자동 검증
 ```
+
+### R. 데이터 정적 검증 & 클라이언트 예측/롤백 (`DataValidator` & `SnapshotBuffer`)
+```ts
+import { DataManager, SnapshotBuffer } from 'ryuis-gamecore';
+
+const report = data.validate(); // 블루프린트 스킬/아이템 참조 및 수식 순환 검증
+if (!report.valid) console.error(report.errors);
+
+const snapshots = new SnapshotBuffer({ capacity: 64 });
+snapshots.capture(manager.runner.tick, manager.world, manager.runner);
+const recon = snapshots.reconcile({
+  serverTick,
+  serverState,
+  serverHash,
+  world: manager.world,
+  runner: manager.runner,
+  unackedCommands,
+});
+```
+
+### S. 월드 디버그 인스펙터 & 서브패스 임포트 (`WorldInspector`)
+```ts
+import { WorldInspector } from 'ryuis-gamecore/core';
+import { CombatSystem } from 'ryuis-gamecore/combat';
+
+const diff = WorldInspector.diffWorlds(serverWorld, clientWorld);
+console.log(diff.equal, diff.changedEntities);
+```

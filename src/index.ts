@@ -283,3 +283,14 @@ export type {
   AdvanceResult,
   FixedStepRunnerState,
 } from './simulation/FixedStepRunner';
+
+// ─── Debug & Inspection ───────────────────────
+export { WorldInspector } from './debug/WorldInspector';
+export type {
+  EntityInspection,
+  WorldInspection,
+  EntityDiffDetail,
+  WorldDiffResult,
+  EventTimelineEntry,
+  WorldInspectorOptions,
+} from './debug/WorldInspector';

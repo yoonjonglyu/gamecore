@@ -235,6 +235,23 @@ const result = playbackManager.runner.replay(replayData);
 console.log(result.completed, result.desynced); // true, false
 ```
 
+### Data Integrity, Client Reconciliation & Debug Inspector
+* **Static Validation (`data.validate()`)**: Detects broken `skillId`/`itemId`/`equipment` references, circular `StatPipeline` formulas, dangling dialogue targets, and invalid gacha pity configs at startup.
+* **Client Prediction Rollback (`SnapshotBuffer`)**: `snapshots.reconcile({ serverTick, serverState, serverHash, world, runner, unackedCommands })` confirms matching ticks or rolls back and replays unacknowledged commands cleanly.
+* **Read-Only Debug Diff (`WorldInspector`)**: `WorldInspector.inspectWorld(world)`, `WorldInspector.diffWorlds(worldA, worldB)`, and bounded event timeline logging.
+* **Tree-Shakeable Subpaths**: Import only what you need from `ryuis-gamecore/core`, `/combat`, `/spatial`, `/serialization`, `/ai`, `/data`, or `/react` (each with dual ESM/CJS bundles & NodeNext `.d.ts`/`.d.cts` declarations).
+
+### Benchmarks (`pnpm run bench`)
+Measured on Node `v22.17.1` (`benchmarks/core.bench.ts`, hardware-dependent):
+
+| Workload | Throughput | Mean Latency |
+|---|---|---|
+| `ECS queryEntities (1000 entities)` | `10,220 ops/s` | `0.0978 ms/op` |
+| `SpatialHashGrid queryRadius (1000 entities)` | `34,570 ops/s` | `0.0289 ms/op` |
+| `World.hash() (100 entities)` | `616 ops/s` | `1.6223 ms/op` |
+| `WorldDiffer.createDelta() (100 entities)` | `2,757 ops/s` | `0.3627 ms/op` |
+| `CommandBus + FixedStepRunner.step(1)` | `37,671 ops/s` | `0.0265 ms/op` |
+
 ---
 
 ## 🆕 What's New in v1.1.3 & v1.1.4
@@ -252,7 +269,7 @@ console.log(result.completed, result.desynced); // true, false
 
 ## 🛠️ Testing & Verification
 
-GameCore includes a comprehensive test suite (252 tests across 28 suites) covering every subsystem:
+GameCore includes a comprehensive test suite (261 tests across 30 suites) covering every subsystem:
 
 ```bash
 # Run unit & integration tests

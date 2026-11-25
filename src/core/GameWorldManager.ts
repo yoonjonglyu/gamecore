@@ -22,6 +22,8 @@ import { TurnSystem } from '../systems/TurnSystem';
 import { FSMSystem } from '../systems/FSMSystem';
 import { QuestSystem } from '../systems/QuestSystem';
 import { CombatRoundingConfig } from '../math/RoundingPolicy';
+import { CueQueue } from '../combat/CueProtocol';
+import { DataManager } from '../data/DataManager';
 import { SaveManager, DeserializationResult } from '../serialization/SaveManager';
 import { SerializeOptions, WorldSerializer } from '../serialization/WorldSerializer';
 import { InventoryComponent } from '../components/InventoryComponent';
@@ -54,6 +56,10 @@ export interface GameWorldManagerOptions<Events extends EventMap = CoreEvents> {
   maxStepsPerFrame?: number;
   /** 커스텀 CommandBus 인스턴스 (선택) */
   commands?: CommandBus<CoreCommands>;
+  /** 연출 큐(CueQueue) 연동 인스턴스 (선택) */
+  cueQueue?: CueQueue;
+  /** 마스터 데이터 매니저(DataManager) 연동 인스턴스 (선택) */
+  data?: DataManager;
 }
 
 export class GameWorldManager<Events extends EventMap = CoreEvents> {
@@ -61,6 +67,8 @@ export class GameWorldManager<Events extends EventMap = CoreEvents> {
   readonly random: SeededRandom;
   readonly commands: CommandBus<CoreCommands>;
   readonly runner: FixedStepRunner<Events, CoreCommands>;
+  readonly cues?: CueQueue;
+  readonly data?: DataManager;
   private readonly _initialSeed: number | string;
 
   // 내장 핵심 시스템 참조 (autoRegisterDefaults = true 시 자동 등록)
@@ -89,6 +97,8 @@ export class GameWorldManager<Events extends EventMap = CoreEvents> {
     const resolvedSeed = options.seed ?? Date.now();
     this._initialSeed = resolvedSeed;
     this.random = options.random ?? new SeededRandom(resolvedSeed);
+    this.cues = options.cueQueue;
+    this.data = options.data;
 
     this.world = new World<Events>({
       bus,
@@ -122,9 +132,12 @@ export class GameWorldManager<Events extends EventMap = CoreEvents> {
   private _registerDefaultSystems(rounding?: CombatRoundingConfig): void {
     this.statModSystem = new StatModSystem();
     this.statusEffectSystem = new StatusEffectSystem();
+    if (this.cues) {
+      this.statusEffectSystem.setCueQueue(this.cues);
+    }
     this.progressionSystem = new ProgressionSystem();
     this.lootSystem = new LootSystem(this.progressionSystem, this.random);
-    this.equipmentSystem = new EquipmentSystem();
+    this.equipmentSystem = new EquipmentSystem(this.data ?? new DataManager(), undefined, this.statModSystem);
     this.movementSystem = new MovementSystem();
     this.spatialGridSystem = new SpatialGridSystem();
     this.turnSystem = new TurnSystem();
@@ -141,6 +154,7 @@ export class GameWorldManager<Events extends EventMap = CoreEvents> {
     this.combatSystem = new CombatSystem({
       random: this.random,
       rounding,
+      cueQueue: this.cues,
     });
 
     // 시스템 우선순위 설정
@@ -292,6 +306,14 @@ export class GameWorldManager<Events extends EventMap = CoreEvents> {
     if (!recorder) return undefined;
     this.runner.setRecorder(undefined);
     return JSON.parse(recorder.toJSON()) as ReplayData;
+  }
+
+  /**
+   * 커스텀 모듈/플러그인 초기화 함수를 체이닝 방식으로 등록한다.
+   */
+  registerModule(plugin: (manager: this) => void): this {
+    plugin(this);
+    return this;
   }
 
   /**
