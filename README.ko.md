@@ -191,6 +191,25 @@ if (serverHash !== clientHash) {
 
 ---
 
+## 🚀 v1.2.0 결정론 시뮬레이션 런타임 (`CommandBus` & `FixedStepRunner`)
+모든 입력과 액션을 단일 커맨드 버스로 통합하고, 프레임률(60Hz/120Hz/가변 델타)과 무관한 고정 타임스텝 시뮬레이션·자동 리플레이 녹화 및 체크포인트 검증을 바로 사용할 수 있습니다.
+```ts
+import { GameWorldManager, StatsComponent } from 'ryuis-gamecore';
+
+const manager = new GameWorldManager({ seed: 'match-1', stepMs: 16 });
+manager.startRecording({ checkpointInterval: 5 });
+
+manager.enqueue('combat:attack', { attackerId: hero.id, targetId: monster.id }, { tick: 1 });
+const { stepsExecuted, alpha } = manager.advance(24); // 16ms 스텝 1회 실행, 보간 계수 alpha = 0.5
+const replayData = manager.stopRecording()!;
+
+// 다른 월드에서 리플레이 재생 및 해시 체크포인트 무결성 검증
+const verify = playbackManager.runner.replay(replayData);
+console.log(verify.completed, verify.desynced); // true, false
+```
+
+---
+
 ## 🆕 v1.1.4 주요 개선 및 안정화 사항
 * **NodeNext ESM/CJS 듀얼 타입 선언 지원**: `exports`의 `"import"`(`.d.ts`/`.js`)와 `"require"`(`.d.cts`/`.cjs`) 조건을 분리하고, 상대 경로 확장자를 자동 보정하여 TypeScript `--moduleResolution NodeNext` 환경에서 즉시 동작합니다.
 * **`World.hash()` 정규화 및 `ComponentRegistry` 확장**: 모든 키를 재귀 코드포인트 순으로 정렬하고 삭제 대기 엔티티를 제외하며, `StatusEffectsComponent`, `StatModsComponent`, `SkillsComponent`, `ItemDefComponent`, `InventoryComponent.maxWeight` 직렬화를 지원합니다.

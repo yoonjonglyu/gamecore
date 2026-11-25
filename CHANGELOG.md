@@ -3,6 +3,19 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-11-26
+
+### Added
+- **Unified Command Bus (`CommandBus`)**: Single validation, middleware, queueing (`enqueue`/`flush` by target tick), dispatching, and auto-recording pipeline across built-in `CoreCommands` (`combat:attack`, `skill:use`, `movement:move`, `equipment:equip`, `equipment:unequip`, `inventory:add`, `inventory:remove`, `fsm:transition`, `turn:end`) and custom project commands (`command:dispatched` / `command:rejected` events).
+- **Fixed-Timestep Simulation Runner (`FixedStepRunner`)**: Frame-rate-independent fixed-step simulation loop (`step`, `advance` with `alpha` interpolation factor and spiral-of-death clamping), periodic hash checkpointing, runner state export/import, and integrated replay verification (`runner.replay()`, emitting `simulation:tick`).
+- **Integrated Runtime API on `GameWorldManager`**: Added `manager.commands`, `manager.runner`, `manager.dispatch()`, `manager.enqueue()`, `manager.step()`, `manager.advance()`, `manager.startRecording()`, and `manager.stopRecording()`, plus `options` forwarding on `manager.load()`.
+- **Multi-Seed Determinism Verification Suite**: Added `tests/simulation_runtime.test.ts` and `tests/determinism_property.test.ts` proving tick-by-tick hash parity across 30 twin seeds, variable frame-rate invariance (60Hz/120Hz/jittery deltas), mid-run Save/Load equivalence, and auto-recorded replay verification.
+
+### Fixed
+- **Per-World Deterministic Entity IDs**: Moved automatic entity ID allocation into `World._nextEntityId` (synced in `createEntityWithId`), eliminating cross-world static ID leakage so parallel worlds, replays, and server/client simulations start with identical deterministic IDs.
+
+---
+
 ## [1.1.4] - 2026-11-25
 
 ### Fixed

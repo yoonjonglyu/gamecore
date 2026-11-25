@@ -9,7 +9,7 @@ description: >-
   and audio/VFX cue protocols), or integrating with React/Canvas/Node.js/Godot/Wasm.
 ---
 
-# GameCore Framework Skill (v1.1.4)
+# GameCore Framework Skill (v1.2.0)
 
 This skill guides the design, implementation, and extension of games built on the **GameCore** framework (`ryuis-gamecore` package).
 
@@ -42,6 +42,7 @@ GameCore is a platform-agnostic, deterministic, 0-dependency, ECS (Entity-Compon
 20. **Delta Synchronization (WorldDiffer)**: Capture lightweight network delta snapshots (`added`, `updated`, `removed`, `blackboard`) for multiplayer replication and spectator syncing.
 21. **Entity Hierarchies (HierarchySystem)**: Parent-child attachments with local coordinate offsets (`offsetX`, `offsetY`) and optional cascading destruction (`cascadeDestroy`).
 22. **Save Envelope Metadata**: Bundle arbitrary game progress, pity counters, or quest stages directly inside HMAC-signed save envelopes.
+23. **Unified Simulation Runtime (`CommandBus` & `FixedStepRunner`)**: Route inputs through `CommandBus` (`dispatch`/`enqueue`/`flush`) and advance `World` via fixed-timestep `FixedStepRunner` (`step`, `advance`, `replay`) for frame-rate invariance and automatic replay verification.
 
 ---
 
@@ -272,4 +273,16 @@ rider.add(new HierarchyComponent({
 
 // mount 이동 시 rider 좌표도 (100, 85)로 자동 동기화
 world.update(16);
+```
+
+### Q. 통합 커맨드 버스 & 고정 타임스텝 시뮬레이션 (`CommandBus` & `FixedStepRunner`)
+```ts
+const manager = new GameWorldManager({ seed: 'sim-42', stepMs: 16 });
+manager.startRecording({ checkpointInterval: 10 });
+
+manager.enqueue('combat:attack', { attackerId: hero.id, targetId: enemy.id }, { tick: 1 });
+const res = manager.advance(24); // 1스텝 실행, res.alpha === 0.5 (렌더러 보간 계수)
+const replay = manager.stopRecording()!;
+
+const verified = playbackManager.runner.replay(replay); // 체크포인트 해시 자동 검증
 ```

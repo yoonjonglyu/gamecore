@@ -250,3 +250,23 @@ export { sha256, hmacSha256 } from './serialization/crypto';
 
 // ─── Events ───────────────────────────────────
 export type { CoreEvents } from './events';
+
+// ─── Simulation Runtime & Command Bus ─────────
+export { CommandBus } from './simulation/CommandBus';
+export type {
+  CommandMap,
+  CoreCommands,
+  GameCommand,
+  CommandValidationResult,
+  CommandValidator,
+  CommandHandler,
+  CommandMiddleware,
+  CommandDispatchResult,
+  CommandHook,
+} from './simulation/CommandBus';
+export { FixedStepRunner } from './simulation/FixedStepRunner';
+export type {
+  FixedStepRunnerOptions,
+  AdvanceResult,
+  FixedStepRunnerState,
+} from './simulation/FixedStepRunner';

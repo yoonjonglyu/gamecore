@@ -52,6 +52,7 @@ export class World<Events extends EventMap = EventMap> implements EntityWorldEmi
   }
 
   private _entities: Map<number, Entity> = new Map();
+  private _nextEntityId: number = 0;
   private _systems: System<Events>[] = [];
   /** System이 처리할 entity 캐시 (query → entities) */
   private _queryCache: Map<System<Events>, Entity[]> = new Map();
@@ -267,7 +268,10 @@ export class World<Events extends EventMap = EventMap> implements EntityWorldEmi
   // ──────────────────────────────────────────────
 
   createEntity(...tags: string[]): Entity {
-    const entity = new Entity(tags);
+    while (this._entities.has(this._nextEntityId) || this._pendingRemove.has(this._nextEntityId)) {
+      this._nextEntityId++;
+    }
+    const entity = new Entity(tags, this._nextEntityId++);
     entity._bindWorld(this);
     this._entities.set(entity.id, entity);
     this.invalidateCache();
@@ -280,6 +284,9 @@ export class World<Events extends EventMap = EventMap> implements EntityWorldEmi
    */
   createEntityWithId(id: number, ...tags: string[]): Entity {
     this._pendingRemove.delete(id);
+    if (Number.isFinite(id)) {
+      this._nextEntityId = Math.max(this._nextEntityId, id + 1);
+    }
     const existing = this._entities.get(id);
     if (existing) {
       existing._bindWorld(undefined);

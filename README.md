@@ -81,6 +81,7 @@ Traditional game logic is often entangled with rendering engines (Three.js, Pixi
 | Feature | Core Class | Highlights |
 |---|---|---|
 | **ECS Core** | `World`, `Entity`, `Component` | Tag querying, query caching (`auto`/`always`), batch updates. |
+| **Simulation Runtime** | `CommandBus`, `FixedStepRunner` | Unified command routing, fixed-timestep loop, auto-recording & replay verification. |
 | **Deterministic PRNG** | `SeededRandom` | PCG32 generator, state serialization, reproducible dice/crits. |
 | **4-Stage Stat Pipeline** | `StatPipeline`, `ExtendedStatsComponent` | $\text{Final} = (\text{Base} + \sum \text{Flat}) \times (1 + \sum \%) \times (1 + \sum \text{Amp})$. |
 | **Combat Strategy** | `CombatPipeline`, `BarrierComponent` | Pre-hit, damage calculate, shield absorb, and post-hit hooks. |
@@ -213,6 +214,29 @@ if (serverHash !== clientHash) {
 
 ---
 
+## 🆕 What's New in v1.2.0
+
+### Unified `CommandBus` + `FixedStepRunner`
+Route all player/AI inputs through a single deterministic command layer, drive fixed-timestep updates regardless of client frame rate, and verify replays automatically:
+```ts
+import { GameWorldManager, StatsComponent } from 'ryuis-gamecore';
+
+const manager = new GameWorldManager({ seed: 'match-1', stepMs: 16 });
+const hero = manager.world.createEntity('hero');
+hero.add(new StatsComponent({ hp: 100, maxHp: 100, attack: 20 }));
+
+manager.startRecording({ checkpointInterval: 5 });
+manager.enqueue('combat:attack', { attackerId: hero.id, targetId: enemy.id }, { tick: 1 });
+const frame = manager.advance(24); // executes 1 fixed 16ms step; frame.alpha === 0.5
+const replayData = manager.stopRecording()!;
+
+// Deterministically replay & verify world hash checkpoints on another instance
+const result = playbackManager.runner.replay(replayData);
+console.log(result.completed, result.desynced); // true, false
+```
+
+---
+
 ## 🆕 What's New in v1.1.3 & v1.1.4
 
 ### v1.1.4 Highlights
@@ -228,7 +252,7 @@ if (serverHash !== clientHash) {
 
 ## 🛠️ Testing & Verification
 
-GameCore includes a comprehensive test suite (244 tests across 26 suites) covering every subsystem:
+GameCore includes a comprehensive test suite (252 tests across 28 suites) covering every subsystem:
 
 ```bash
 # Run unit & integration tests

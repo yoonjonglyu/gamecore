@@ -190,4 +190,24 @@ export interface CoreEvents {
   'cue:triggered': {
     cue: import('./combat/CueProtocol').CueEvent;
   };
+
+  // ─── 시뮬레이션 런타임 & 커맨드 버스 ───────────
+  'command:dispatched': {
+    type: string;
+    payload: any;
+    actorId?: string | number;
+    tick: number;
+  };
+  'command:rejected': {
+    type: string;
+    payload: any;
+    actorId?: string | number;
+    tick: number;
+    reason: string;
+  };
+  'simulation:tick': {
+    tick: number;
+    stepMs: number;
+    elapsedMs: number;
+  };
 }

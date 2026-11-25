@@ -23,7 +23,17 @@ import { FSMSystem } from '../systems/FSMSystem';
 import { QuestSystem } from '../systems/QuestSystem';
 import { CombatRoundingConfig } from '../math/RoundingPolicy';
 import { SaveManager, DeserializationResult } from '../serialization/SaveManager';
-import { SerializeOptions } from '../serialization/WorldSerializer';
+import { SerializeOptions, WorldSerializer } from '../serialization/WorldSerializer';
+import { InventoryComponent } from '../components/InventoryComponent';
+import { FSMComponent } from '../components/FSMComponent';
+import { ReplayRecorder, ReplayRecorderOptions } from '../replay/ReplayRecorder';
+import { ReplayData } from '../replay/types';
+import {
+  CommandBus,
+  CoreCommands,
+  CommandDispatchResult,
+} from '../simulation/CommandBus';
+import { FixedStepRunner, AdvanceResult } from '../simulation/FixedStepRunner';
 
 export interface GameWorldManagerOptions<Events extends EventMap = CoreEvents> {
   /** 시드 기반 결정론적 난수 시드 (number 또는 string) */
@@ -38,11 +48,20 @@ export interface GameWorldManagerOptions<Events extends EventMap = CoreEvents> {
   rounding?: CombatRoundingConfig;
   /** 추가로 등록할 커스텀 시스템 목록 */
   systems?: System<Events>[];
+  /** 고정 타임스텝 간격(ms). 기본값: 16 */
+  stepMs?: number;
+  /** 프레임당 최대 고정 스텝 수. 기본값: 10 */
+  maxStepsPerFrame?: number;
+  /** 커스텀 CommandBus 인스턴스 (선택) */
+  commands?: CommandBus<CoreCommands>;
 }
 
 export class GameWorldManager<Events extends EventMap = CoreEvents> {
   readonly world: World<Events>;
   readonly random: SeededRandom;
+  readonly commands: CommandBus<CoreCommands>;
+  readonly runner: FixedStepRunner<Events, CoreCommands>;
+  private readonly _initialSeed: number | string;
 
   // 내장 핵심 시스템 참조 (autoRegisterDefaults = true 시 자동 등록)
   combatSystem?: CombatSystem;
@@ -67,16 +86,26 @@ export class GameWorldManager<Events extends EventMap = CoreEvents> {
       );
     }
 
-    this.random = options.random ?? new SeededRandom(options.seed ?? Date.now());
+    const resolvedSeed = options.seed ?? Date.now();
+    this._initialSeed = resolvedSeed;
+    this.random = options.random ?? new SeededRandom(resolvedSeed);
 
     this.world = new World<Events>({
       bus,
       random: this.random,
     });
 
+    this.commands = options.commands ?? new CommandBus<CoreCommands>();
+    this.runner = new FixedStepRunner<Events, CoreCommands>(this.world, {
+      stepMs: options.stepMs,
+      maxStepsPerFrame: options.maxStepsPerFrame,
+      commands: this.commands,
+    });
+
     const shouldAutoRegister = options.autoRegisterDefaults ?? true;
     if (shouldAutoRegister) {
       this._registerDefaultSystems(options.rounding);
+      this._registerDefaultCommandHandlers();
     }
 
     if (options.systems) {
@@ -142,6 +171,129 @@ export class GameWorldManager<Events extends EventMap = CoreEvents> {
       .addSystem(this.spatialGridSystem as unknown as System<Events>);
   }
 
+  private _registerDefaultCommandHandlers(): void {
+    this.commands
+      .register('combat:attack', (req) => {
+        if (!this.combatSystem) throw new Error('CombatSystem is not registered');
+        this.combatSystem.requestAttack(req);
+      })
+      .register('skill:use', (req) => {
+        if (!this.skillSystem) throw new Error('SkillSystem is not registered');
+        this.skillSystem.useSkill(req);
+      })
+      .register('movement:move', (req) => {
+        if (!this.movementSystem) throw new Error('MovementSystem is not registered');
+        this.movementSystem.requestMove(req.entityId, req.targetX, req.targetY);
+      })
+      .register('equipment:equip', (req) => {
+        if (!this.equipmentSystem) throw new Error('EquipmentSystem is not registered');
+        this.equipmentSystem.requestEquip(req);
+      })
+      .register('equipment:unequip', (req) => {
+        if (!this.equipmentSystem) throw new Error('EquipmentSystem is not registered');
+        this.equipmentSystem.requestUnequip(req);
+      })
+      .register('inventory:add', (req) => {
+        const entity = this.world.getEntity(req.entityId);
+        const inv = entity?.get(InventoryComponent);
+        if (!inv) throw new Error(`InventoryComponent not found on entity ${req.entityId}`);
+        const qty = req.quantity ?? 1;
+        if (inv.add(req.itemId, qty)) {
+          (this.world.bus as unknown as EventBus<CoreEvents>).emit('inventory:item:added', {
+            entityId: req.entityId,
+            defId: req.itemId,
+            quantity: qty,
+          });
+        } else {
+          (this.world.bus as unknown as EventBus<CoreEvents>).emit('inventory:full', {
+            entityId: req.entityId,
+          });
+        }
+      })
+      .register('inventory:remove', (req) => {
+        const entity = this.world.getEntity(req.entityId);
+        const inv = entity?.get(InventoryComponent);
+        if (!inv) throw new Error(`InventoryComponent not found on entity ${req.entityId}`);
+        const qty = req.quantity ?? 1;
+        if (inv.remove(req.itemId, qty)) {
+          (this.world.bus as unknown as EventBus<CoreEvents>).emit('inventory:item:removed', {
+            entityId: req.entityId,
+            defId: req.itemId,
+            quantity: qty,
+          });
+        }
+      })
+      .register('fsm:transition', (req) => {
+        const entity = this.world.getEntity(req.entityId);
+        const fsm = entity?.get(FSMComponent);
+        if (!fsm) throw new Error(`FSMComponent not found on entity ${req.entityId}`);
+        if (!fsm.transitionTo(req.nextState, req.force ?? false)) {
+          throw new Error(`FSM transition to '${req.nextState}' rejected for entity ${req.entityId}`);
+        }
+      })
+      .register('turn:end', (req) => {
+        if (!this.turnSystem) throw new Error('TurnSystem is not registered');
+        if (!this.turnSystem.endTurn(req.entityId)) {
+          throw new Error(`Entity ${req.entityId} is not the active turn owner`);
+        }
+      });
+  }
+
+  dispatch<K extends keyof CoreCommands>(
+    type: K,
+    payload: CoreCommands[K],
+    options?: { actorId?: string | number; tick?: number },
+  ): CommandDispatchResult {
+    return this.commands.dispatch(type, payload, {
+      actorId: options?.actorId,
+      tick: options?.tick ?? this.runner.tick + 1,
+    });
+  }
+
+  enqueue<K extends keyof CoreCommands>(
+    type: K,
+    payload: CoreCommands[K],
+    options?: { actorId?: string | number; tick?: number },
+  ): this {
+    this.commands.enqueue(type, payload, options);
+    return this;
+  }
+
+  /**
+   * 고정 타임스텝 틱을 `count`회 실행한다 (`runner.step` 위임).
+   */
+  step(count = 1): number {
+    return this.runner.step(count);
+  }
+
+  /**
+   * 가변 프레임 델타를 누적하여 고정 스텝 단위로 시뮬레이션을 진행한다 (`runner.advance` 위임).
+   */
+  advance(frameDeltaMs: number): AdvanceResult {
+    return this.runner.advance(frameDeltaMs);
+  }
+
+  /**
+   * 커맨드 버스 및 체크포인트 자동 리플레이 녹화를 시작한다.
+   */
+  startRecording(
+    options?: ReplayRecorderOptions & { checkpointInterval?: number },
+  ): ReplayRecorder {
+    const recorder = new ReplayRecorder(this._initialSeed, options);
+    this.runner.setRecorder(recorder, options?.checkpointInterval ?? 0);
+    return recorder;
+  }
+
+  /**
+   * 진행 중인 리플레이 녹화를 종료하고 직렬화된 ReplayData를 반환한다.
+   */
+  stopRecording(): ReplayData | undefined {
+    const recorder = this.runner.recorder;
+    if (!recorder) return undefined;
+    this.runner.setRecorder(undefined);
+    return JSON.parse(recorder.toJSON()) as ReplayData;
+  }
+
   /**
    * 게임 루프 틱 실행
    * @param delta 경과 시간 또는 턴 수
@@ -156,6 +308,7 @@ export class GameWorldManager<Events extends EventMap = CoreEvents> {
    */
   destroy(): void {
     this.questSystem?.destroy();
+    this.commands.clear();
     this.world.destroy();
   }
 
@@ -175,7 +328,8 @@ export class GameWorldManager<Events extends EventMap = CoreEvents> {
   load(
     payload: string,
     secretKey?: string,
+    options?: { allowLegacySignature?: boolean; clearWorld?: boolean; serializer?: WorldSerializer },
   ): DeserializationResult {
-    return SaveManager.deserialize(payload, this.world, secretKey);
+    return SaveManager.deserialize(payload, this.world, secretKey, options);
   }
 }
