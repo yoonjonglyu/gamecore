@@ -215,6 +215,12 @@ export { Registry } from './data/Registry';
 export type { Identifiable } from './data/Registry';
 export { DataManager } from './data/DataManager';
 export type { GameDataBundle } from './data/DataManager';
+export { DataValidator } from './data/DataValidator';
+export type {
+  ValidationSeverity,
+  ValidationIssue,
+  ValidationReport,
+} from './data/DataValidator';
 export type { ItemDef } from './data/ItemDef';
 export { DropTable } from './data/DropTable';
 export type { DropEntry, DropResult } from './data/DropTable';
@@ -245,7 +251,14 @@ export type { SerializedWorld, SerializedEntity, SerializedComponent, SerializeO
 export { SaveManager } from './serialization/SaveManager';
 export type { SaveEnvelope, DeserializationResult, MigrationFunction, MigrationStep } from './serialization/SaveManager';
 export { WorldDiffer } from './serialization/WorldDiffer';
-export type { WorldDelta, ComponentPatch, ComponentRemovalPatch } from './serialization/WorldDiffer';
+export type { WorldDelta, ComponentPatch, ComponentRemovalPatch, TagSyncPatch } from './serialization/WorldDiffer';
+export { SnapshotBuffer } from './serialization/SnapshotBuffer';
+export type {
+  SnapshotBufferOptions,
+  WorldSnapshotEntry,
+  ReconcileOptions,
+  ReconcileResult,
+} from './serialization/SnapshotBuffer';
 export { sha256, hmacSha256 } from './serialization/crypto';
 
 // ─── Events ───────────────────────────────────

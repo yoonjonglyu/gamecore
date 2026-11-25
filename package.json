@@ -27,6 +27,66 @@
         "types": "./dist/react/index.d.cts",
         "default": "./dist/react/index.cjs"
       }
+    },
+    "./core": {
+      "import": {
+        "types": "./dist/entries/core.d.ts",
+        "default": "./dist/core/index.js"
+      },
+      "require": {
+        "types": "./dist/entries/core.d.cts",
+        "default": "./dist/core/index.cjs"
+      }
+    },
+    "./combat": {
+      "import": {
+        "types": "./dist/entries/combat.d.ts",
+        "default": "./dist/combat/index.js"
+      },
+      "require": {
+        "types": "./dist/entries/combat.d.cts",
+        "default": "./dist/combat/index.cjs"
+      }
+    },
+    "./spatial": {
+      "import": {
+        "types": "./dist/entries/spatial.d.ts",
+        "default": "./dist/spatial/index.js"
+      },
+      "require": {
+        "types": "./dist/entries/spatial.d.cts",
+        "default": "./dist/spatial/index.cjs"
+      }
+    },
+    "./serialization": {
+      "import": {
+        "types": "./dist/entries/serialization.d.ts",
+        "default": "./dist/serialization/index.js"
+      },
+      "require": {
+        "types": "./dist/entries/serialization.d.cts",
+        "default": "./dist/serialization/index.cjs"
+      }
+    },
+    "./ai": {
+      "import": {
+        "types": "./dist/entries/ai.d.ts",
+        "default": "./dist/ai/index.js"
+      },
+      "require": {
+        "types": "./dist/entries/ai.d.cts",
+        "default": "./dist/ai/index.cjs"
+      }
+    },
+    "./data": {
+      "import": {
+        "types": "./dist/entries/data.d.ts",
+        "default": "./dist/data/index.js"
+      },
+      "require": {
+        "types": "./dist/entries/data.d.cts",
+        "default": "./dist/data/index.cjs"
+      }
     }
   },
   "repository": {
@@ -80,7 +140,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
-    "smoke": "node --input-type=module -e \"import('./dist/index.js').then(m => { if (!m.World || !m.GameWorldManager || !m.CommandBus || !m.FixedStepRunner) throw new Error('ESM Smoke failed'); })\" && node -e \"const m = require('./dist/index.cjs'); if (!m.World || !m.GameWorldManager || !m.CommandBus || !m.FixedStepRunner) throw new Error('CJS Smoke failed'); console.log('Smoke test passed (ESM & CJS)!')\"",
+    "smoke": "node --input-type=module -e \"Promise.all([import('./dist/index.js'), import('./dist/core/index.js'), import('./dist/serialization/index.js')]).then(([m, c, s]) => { if (!m.World || !c.CommandBus || !s.SnapshotBuffer) throw new Error('ESM Smoke failed'); })\" && node -e \"const m = require('./dist/index.cjs'); const c = require('./dist/core/index.cjs'); const s = require('./dist/serialization/index.cjs'); if (!m.World || !c.CommandBus || !s.SnapshotBuffer) throw new Error('CJS Smoke failed'); console.log('Smoke test passed (ESM & CJS)!')\"",
     "prepublishOnly": "tsc --noEmit && vitest run && pnpm run build && pnpm run smoke"
   },
   "devDependencies": {

@@ -9,6 +9,7 @@ import { Registry, Identifiable } from './Registry';
 import { ItemDef } from './ItemDef';
 import { SkillDef } from '../skills/SkillDef';
 import { EntityBlueprint } from '../factory/Blueprint';
+import { DataValidator, ValidationReport } from './DataValidator';
 
 export interface GameDataBundle {
   items?: ItemDef[];
@@ -63,6 +64,11 @@ export class DataManager {
   /** 커스텀 레지스트리 존재 여부 */
   hasRegistry(name: string): boolean {
     return this._customRegistries.has(name);
+  }
+
+  /** 등록된 아이템, 스킬, 블루프린트의 참조 무결성과 수식 순환 여부를 검증한다 */
+  validate(): ValidationReport {
+    return DataValidator.validateDataManager(this);
   }
 
   /** 전체 레지스트리 초기화 */
